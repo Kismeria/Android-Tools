@@ -1,15 +1,18 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod adb;
+#[cfg_attr(not(windows), path = "camera_linux.rs")]
 mod camera;
 mod commands;
 mod mirror;
+#[cfg_attr(not(windows), path = "tools_linux.rs")]
 mod tools;
 mod util;
 
 use tauri::Manager;
 
 /// Pure-black caption bar on Windows 11 to match the OLED UI.
+#[cfg(windows)]
 fn black_titlebar(window: &tauri::WebviewWindow) {
     use windows::Win32::Foundation::HWND;
     use windows::Win32::Graphics::Dwm::{DwmSetWindowAttribute, DWMWINDOWATTRIBUTE};
@@ -23,7 +26,11 @@ fn black_titlebar(window: &tauri::WebviewWindow) {
     }
 }
 
+#[cfg(not(windows))]
+fn black_titlebar(_window: &tauri::WebviewWindow) {}
+
 /// Windows 10 may lack the WebView2 runtime that renders the UI: explain and offer the installer.
+#[cfg(windows)]
 fn ensure_webview2() -> bool {
     use windows::core::w;
     use windows::Win32::UI::WindowsAndMessaging::{MessageBoxW, IDYES, MB_ICONWARNING, MB_YESNO};
@@ -46,6 +53,15 @@ fn ensure_webview2() -> bool {
             .spawn();
     }
     false
+}
+
+#[cfg(not(windows))]
+fn ensure_webview2() -> bool {
+    // WebKitGTK's DMA-BUF renderer shows a blank window on some GPU/driver setups.
+    if std::env::var_os("WEBKIT_DISABLE_DMABUF_RENDERER").is_none() {
+        std::env::set_var("WEBKIT_DISABLE_DMABUF_RENDERER", "1");
+    }
+    true
 }
 
 fn main() {
@@ -76,6 +92,7 @@ fn main() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::app_info,
+            commands::set_language,
             commands::tools_info,
             commands::update_tool,
             commands::open_path,

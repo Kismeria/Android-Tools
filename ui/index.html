@@ -334,7 +334,7 @@
               <div class="faint" id="scrcpyPath"></div></div>
             <button class="btn" id="scrcpyUpdate"><i class="ic">&#xE896;</i><span>Обновить</span></button>
           </div>
-          <div class="faint" style="margin-top:12px">Встроены в программу и распаковываются при первом запуске. «Обновить» скачивает последние версии.</div>
+          <div class="faint" id="toolsNote" style="margin-top:12px">Встроены в программу и распаковываются при первом запуске. «Обновить» скачивает последние версии.</div>
         </div>
         <div class="card">
           <div class="section">Сохранение</div>
@@ -346,6 +346,10 @@
         </div>
         <div class="card">
           <div class="section">Общее</div>
+          <div class="line"><span class="label no-i18n">Язык · Language</span>
+            <div class="seg no-i18n" data-bind="lang">
+              <button data-v="ru">Русский</button><button data-v="en">English</button>
+            </div></div>
           <label class="switch" title="Проверять подключения каждые 2.5 с"><i class="ic">&#xE72C;</i><span class="text">Автопоиск устройств</span><input type="checkbox" data-bind="auto_refresh"><i class="knob"></i></label>
         </div>
         <div class="card row" style="gap:14px">
@@ -373,6 +377,7 @@
   </div>
 </div>
 
+<script src="i18n.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

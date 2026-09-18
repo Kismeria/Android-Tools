@@ -1,6 +1,6 @@
 [package]
 name = "android-tools"
-version = "2.1.0"
+version = "2.2.0"
 edition = "2021"
 
 [build-dependencies]
@@ -20,7 +20,7 @@ ureq = "2"
 rand = "0.8"
 png = "0.17"
 
-[dependencies.windows]
+[target.'cfg(windows)'.dependencies.windows]
 version = "0.61"
 features = [
   "Win32_Foundation",

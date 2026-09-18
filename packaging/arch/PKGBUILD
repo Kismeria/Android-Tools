@@ -1,0 +1,28 @@
+# Maintainer: Kismeria
+pkgname=android-tools-gui
+pkgver=2.2.0
+pkgrel=1
+pkgdesc="Android Tools: control an Android phone from the PC — scrcpy screen, apps, files, phone as a webcam"
+arch=('x86_64')
+url="https://github.com/Kismeria/Android-Tools"
+license=('MIT')
+depends=('webkit2gtk-4.1' 'gtk3' 'android-tools' 'scrcpy' 'polkit' 'xdg-utils')
+makedepends=('rust' 'npm')
+optdepends=('v4l2loopback-dkms: use the phone as a webcam'
+            'v4l2loopback-utils: add the webcam without reloading the module')
+source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
+sha256sums=('SKIP')
+
+build() {
+  cd "Android-Tools-$pkgver"
+  npm ci
+  npx tauri build --no-bundle
+}
+
+package() {
+  cd "Android-Tools-$pkgver"
+  install -Dm755 src-tauri/target/release/android-tools-gui "$pkgdir/usr/bin/android-tools-gui"
+  install -Dm644 packaging/arch/android-tools-gui.desktop "$pkgdir/usr/share/applications/android-tools-gui.desktop"
+  install -Dm644 src-tauri/icons/icon.png "$pkgdir/usr/share/icons/hicolor/256x256/apps/android-tools-gui.png"
+  install -Dm644 LICENSE "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}

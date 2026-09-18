@@ -116,6 +116,7 @@ pub struct ToolsInfo {
     scrcpy_version: String,
     scrcpy_path: String,
     bin_dir: String,
+    managed: bool,
 }
 
 pub fn info() -> ToolsInfo {
@@ -125,6 +126,7 @@ pub fn info() -> ToolsInfo {
         scrcpy_version: scrcpy_version(),
         scrcpy_path: scrcpy_exe().map(|p| p.display().to_string()).unwrap_or_default(),
         bin_dir: bin_dir().display().to_string(),
+        managed: false,
     }
 }
 

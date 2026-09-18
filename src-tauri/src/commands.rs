@@ -29,9 +29,7 @@ async fn blocking<T: Send + 'static>(f: impl FnOnce() -> Res<T> + Send + 'static
     tauri::async_runtime::spawn_blocking(f).await.map_err(err)?
 }
 
-fn default_save_dir() -> PathBuf {
-    std::env::var_os("USERPROFILE").map(PathBuf::from).unwrap_or_default().join("Pictures").join("Android Tools")
-}
+use crate::util::{default_save_dir, folder};
 
 // ── app / tools ──
 
@@ -46,6 +44,11 @@ pub async fn app_info() -> Res<Value> {
         }))
     })
     .await
+}
+
+#[tauri::command]
+pub fn set_language(lang: String) {
+    crate::util::set_english(lang == "en");
 }
 
 #[tauri::command]
@@ -69,7 +72,8 @@ pub async fn open_path(path: String) -> Res<()> {
         if !p.exists() {
             std::fs::create_dir_all(&p).map_err(err)?;
         }
-        hidden("explorer").arg(&p).spawn().map_err(err)?;
+        let opener = if cfg!(windows) { "explorer" } else { "xdg-open" };
+        hidden(opener).arg(&p).spawn().map_err(err)?;
         Ok(())
     })
     .await
@@ -122,7 +126,7 @@ pub async fn mirror_start(
     save_dir: String,
     settings: MirrorSettings,
 ) -> Res<()> {
-    let record_dir = PathBuf::from(save_dir).join("Записи").display().to_string();
+    let record_dir = PathBuf::from(save_dir).join(folder("Записи", "Recordings")).display().to_string();
     let args = mirror::build_args(&serial, &settings, &title, &record_dir);
     let mut m = Mirror::default();
     let m = blocking(move || m.start(args).map(|_| m)).await?;
@@ -309,7 +313,7 @@ pub async fn key_event(serial: String, key: String) -> Res<()> {
 pub async fn screenshot(serial: String, save_dir: String, clipboard: bool) -> Res<Value> {
     blocking(move || {
         let png = adb::screenshot(&serial)?;
-        let dir = PathBuf::from(save_dir).join("Скриншоты");
+        let dir = PathBuf::from(save_dir).join(folder("Скриншоты", "Screenshots"));
         std::fs::create_dir_all(&dir).map_err(err)?;
         let secs = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis()).unwrap_or(0);
         let path = dir.join(format!("screen_{secs}.png"));

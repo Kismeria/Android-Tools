@@ -9,6 +9,7 @@ const esc = (s) => String(s ?? "").replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<
 /* ───────────── config ───────────── */
 
 const DEFAULTS = {
+  lang: "",
   serial: "",
   save_dir: "",
   auto_refresh: true,
@@ -201,7 +202,11 @@ const humanSize = (n) => {
   while (n >= 1024 && i < u.length - 1) { n /= 1024; i++; }
   return i ? `${n.toFixed(1)} ${u[i]}` : `${n} ${u[i]}`;
 };
-const shortPath = (p) => p.replace(/^C:\\Users\\[^\\]+/i, "~");
+const shortPath = (p) => p.replace(/^C:\\Users\\[^\\]+/i, "~").replace(/^\/home\/[^/]+/, "~");
+const IS_WINDOWS = navigator.userAgent.includes("Windows");
+const joinPath = (...parts) => parts.join(IS_WINDOWS ? "\\" : "/");
+// Folder inside the save directory, named in the UI language.
+const saveSub = (name) => joinPath(cfg.save_dir, I18N.t(name));
 
 /* ───────────── device state ───────────── */
 
@@ -513,7 +518,8 @@ registerPage("camera", {
       if (path === "camera.mode") this.paintMode();
       if (path === "camera.preview" && !v) this.clearPreview("Превью скрыто");
       if (!this.running) return;
-      if (restartKeys.includes(path)) {
+      // Linux streams through scrcpy directly: any change needs a restart.
+      if (restartKeys.includes(path) || !IS_WINDOWS) {
         clearTimeout(timer);
         timer = setTimeout(() => this.start(), 700);
       } else {
@@ -548,6 +554,7 @@ registerPage("camera", {
     onDevice(() => this.paintMode());
     this.paintMode();
     this.checkVcam();
+    this.clearPreview();
   },
   show() { this.checkVcam(); },
   live() {
@@ -584,9 +591,18 @@ registerPage("camera", {
     if (!st) return;
     this.vcam = st;
     const dshow = st.kind === "dshow";
-    $("#vcamNote").textContent = dshow
+    const v4l2 = st.kind === "v4l2";
+    $("#vcamNote").textContent = v4l2
+      ? "Linux: камера видна во всех программах (v4l2loopback). Установка один раз, нужен пароль администратора."
+      : dshow
       ? "Windows 10: камера видна в Zoom, Discord, Teams, Telegram, OBS, Chrome и Edge. Встроенное приложение «Камера» Windows её не показывает. Установка один раз, нужны права администратора."
       : "Системное устройство: «Камера» Windows, Zoom, Teams, Discord, Telegram, OBS, браузеры. Установка один раз, нужны права администратора.";
+    if (v4l2 && !st.supported && !st.device) {
+      label.innerHTML = `<span class="warn">Нужен пакет v4l2loopback-dkms</span>`;
+      $("#vcamInstall").style.display = "none";
+      $("#vcamRemove").style.display = "none";
+      return;
+    }
     if (st.device) {
       label.innerHTML = `<span class="ok">✓ Установлена</span>${dshow ? " · DirectShow" : ""}`;
     } else if (st.registered) {
@@ -599,7 +615,9 @@ registerPage("camera", {
   },
   async install() {
     const ok = await confirmBox("Установить камеру?",
-      "Windows запросит права администратора. Будет включена служба камер Windows и добавлено устройство «Android Tools Camera».",
+      this.vcam?.kind === "v4l2"
+        ? "Linux: камера видна во всех программах (v4l2loopback). Установка один раз, нужен пароль администратора."
+        : "Windows запросит права администратора. Будет включена служба камер Windows и добавлено устройство «Android Tools Camera».",
       "Установить", "primary");
     if (!ok) return;
     toast("Установка камеры…");
@@ -633,7 +651,7 @@ registerPage("camera", {
     this.setRunning(false);
     await call("camera_stop", {}, { busy: false, quiet: true });
   },
-  clearPreview(text = "Нет сигнала") {
+  clearPreview(text = IS_WINDOWS ? "Нет сигнала" : "Превью недоступно в Linux — откройте камеру в любой программе") {
     const box = $("#camPreview");
     box.classList.remove("live");
     $("img", box).removeAttribute("src");
@@ -794,7 +812,7 @@ registerPage("apps", {
       case "extract": {
         await run("extract");
         toast(`Сохранено: ${what}`, "ok");
-        return call("open_path", { path: `${cfg.save_dir}\\APK` }, { busy: false });
+        return call("open_path", { path: saveSub("APK") }, { busy: false });
       }
       case "uninstall":
         if (!(await confirmBox("Удалить?", `${what} будет удалено с телефона.`, "Удалить"))) return;
@@ -943,7 +961,7 @@ registerPage("files", {
     this.render();
   },
   render() {
-    const fmt = (t) => t ? new Date(t * 1000).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }).replace(",", "") : "";
+    const fmt = (t) => t ? new Date(t * 1000).toLocaleString(I18N.locale, { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" }).replace(",", "") : "";
     const rows = this.items.map((it) => `
       <div class="item" data-name="${esc(it.name)}">
         <i class="ic ${it.dir ? "folder" : ""}">${it.dir ? "&#xE8B7;" : fileIcon(it.name)}</i>
@@ -966,7 +984,7 @@ registerPage("files", {
   async download(names, openAfter = false) {
     const serial = requireDevice();
     if (!serial || !names.length) return;
-    let dest = `${cfg.save_dir}\\Файлы`;
+    let dest = saveSub("Файлы");
     if (!openAfter) {
       const chosen = await T.dialog.open({ directory: true, title: "Куда сохранить", defaultPath: cfg.save_dir });
       if (!chosen) return;
@@ -974,7 +992,7 @@ registerPage("files", {
     }
     toast(`Скачивание: ${names.length}…`);
     await call("files_pull", { serial, remote: names.map((n) => cfg.files.path + n), dest });
-    if (openAfter && names.length === 1) await call("open_path", { path: `${dest}\\${names[0]}` }, { busy: false });
+    if (openAfter && names.length === 1) await call("open_path", { path: joinPath(dest, names[0]) }, { busy: false });
     else { toast(`Сохранено в ${dest}`, "ok"); call("open_path", { path: dest }, { busy: false }); }
   },
   async upload(files) {
@@ -1087,7 +1105,9 @@ registerPage("utils", {
 
 registerPage("settings", {
   init(el) {
-    bindAll(el);
+    bindAll(el, (v, path) => {
+      if (path === "lang") location.reload();
+    });
     $("#toolsDir").onclick = () => this.tools && call("open_path", { path: this.tools.bin_dir }, { busy: false });
     $("#saveDirOpen").onclick = () => call("open_path", { path: cfg.save_dir }, { busy: false });
     $("#saveDirPick").onclick = async () => {
@@ -1120,6 +1140,10 @@ registerPage("settings", {
     $("#adbPath").textContent = shortPath(t.adb_path);
     $("#scrcpyVer").textContent = t.scrcpy_version ? `v${t.scrcpy_version}` : "не найден";
     $("#scrcpyPath").textContent = shortPath(t.scrcpy_path);
+    for (const id of ["#adbUpdate", "#scrcpyUpdate"]) $(id).style.display = t.managed ? "none" : "";
+    $("#toolsNote").textContent = t.managed
+      ? "Обновляется через pacman"
+      : "Встроены в программу и распаковываются при первом запуске. «Обновить» скачивает последние версии.";
   },
   paint() { $("#saveDir").textContent = shortPath(cfg.save_dir); },
 });
@@ -1147,7 +1171,7 @@ $("#pill").onclick = (e) => {
 onDevice(paintPill);
 
 for (const n of $$(".nav")) n.onclick = () => go(n.dataset.page);
-for (const b of $$("[data-open-dir]")) b.onclick = () => call("open_path", { path: `${cfg.save_dir}\\${b.dataset.openDir}` }, { busy: false });
+for (const b of $$("[data-open-dir]")) b.onclick = () => call("open_path", { path: saveSub(b.dataset.openDir) }, { busy: false });
 
 document.addEventListener("keydown", (e) => {
   if ($("#modalBack").classList.contains("show")) return;
@@ -1179,7 +1203,38 @@ T.webviewWindow.getCurrentWebviewWindow().onDragDropEvent((e) => {
   }
 });
 
+// First launch: pick the interface language (remembered in cfg.lang).
+function chooseLanguage() {
+  return new Promise((resolve) => {
+    const back = document.createElement("div");
+    back.className = "modal-back show";
+    back.innerHTML = `
+      <div class="modal lang-pick">
+        <i class="ic" style="font-size:30px;color:var(--accent)">&#xE8EA;</i>
+        <h3>Android Tools</h3>
+        <div class="hint">Выберите язык · Choose your language</div>
+        <div class="buttons" style="justify-content:stretch;margin-top:18px">
+          <button class="btn big grow" data-lang="ru">Русский</button>
+          <button class="btn big grow" data-lang="en">English</button>
+        </div>
+      </div>`;
+    back.onclick = (e) => {
+      const b = e.target.closest("[data-lang]");
+      if (!b) return;
+      back.remove();
+      resolve(b.dataset.lang);
+    };
+    document.body.append(back);
+  });
+}
+
 (async function boot() {
+  if (!cfg.lang) {
+    cfg.lang = await chooseLanguage();
+    save();
+  }
+  I18N.apply(cfg.lang);
+  call("set_language", { lang: cfg.lang }, { busy: false, quiet: true }).catch(() => {});
   go("devices");
   try {
     const info = await call("app_info", {}, { quiet: true });

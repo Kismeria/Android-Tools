@@ -1,3 +1,8 @@
+@font-face {
+  font-family: "AT Icons";
+  src: url("fonts/at-icons.woff2") format("woff2");
+}
+
 :root {
   --bg: #000;
   --surface: #0a0a0a;
@@ -14,7 +19,7 @@
   --danger: #ff5c5c;
   --warn: #ffb547;
   --radius: 14px;
-  --icons: "Segoe Fluent Icons", "Segoe MDL2 Assets";
+  --icons: "Segoe Fluent Icons", "AT Icons";
   color-scheme: dark;
 }
 
@@ -23,7 +28,7 @@ html, body { height: 100%; margin: 0; }
 body {
   background: var(--bg);
   color: var(--text);
-  font: 13.5px/1.4 "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  font: 13.5px/1.4 "Segoe UI Variable Text", "Segoe UI", "Inter", "Noto Sans", "Cantarell", system-ui, sans-serif;
   overflow: hidden;
   user-select: none;
   -webkit-font-smoothing: antialiased;
@@ -102,7 +107,7 @@ header .grow { flex: 1; }
 .ok { color: var(--accent); }
 .warn { color: var(--warn); }
 .err { color: var(--danger); }
-.mono { font-family: "Cascadia Mono", Consolas, monospace; font-size: 12.5px; }
+.mono { font-family: "Cascadia Mono", Consolas, "JetBrains Mono", "DejaVu Sans Mono", monospace; font-size: 12.5px; }
 .divider { height: 1px; background: var(--border); margin: 12px 0; }
 .label { width: 100px; flex: none; }
 .gap { height: 12px; }
@@ -304,3 +309,6 @@ input[type=range]::-webkit-slider-thumb {
 .menu button:disabled { color: var(--faint); pointer-events: none; }
 .menu hr { border: 0; height: 1px; background: var(--border); margin: 4px 6px; }
 .menu .danger { color: var(--danger); }
+
+.lang-pick { text-align: center; width: 360px; }
+.lang-pick h3 { margin-top: 10px; }

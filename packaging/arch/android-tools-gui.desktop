@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Android Tools
+Comment=Control an Android phone: screen, apps, files, webcam
+Comment[ru]=Управление Android-телефоном: экран, приложения, файлы, веб-камера
+Exec=android-tools-gui
+Icon=android-tools-gui
+Terminal=false
+Categories=Utility;
+Keywords=adb;scrcpy;android;phone;webcam;

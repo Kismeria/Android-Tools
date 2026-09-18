@@ -60,9 +60,11 @@ fn build_softcam(target: &str, out_name: &str) {
 }
 
 fn main() {
-    build_camera_dll();
-    build_softcam("x86_64-pc-windows-msvc", "softcam64.dll");
-    build_softcam("i686-pc-windows-msvc", "softcam32.dll");
-    println!("cargo:rerun-if-changed=embed");
+    if env::var("CARGO_CFG_TARGET_OS").as_deref() == Ok("windows") {
+        build_camera_dll();
+        build_softcam("x86_64-pc-windows-msvc", "softcam64.dll");
+        build_softcam("i686-pc-windows-msvc", "softcam32.dll");
+        println!("cargo:rerun-if-changed=embed");
+    }
     tauri_build::build();
 }

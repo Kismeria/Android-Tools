@@ -1,0 +1,49 @@
+name: Arch Linux package
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to attach the package to (empty: artifact only)"
+        required: false
+
+permissions:
+  contents: write
+
+jobs:
+  arch:
+    runs-on: ubuntu-latest
+    container: archlinux:latest
+    steps:
+      - name: Install build dependencies
+        run: |
+          pacman -Syu --noconfirm --needed base-devel git github-cli rust npm nodejs \
+            webkit2gtk-4.1 gtk3 libsoup3 librsvg openssl android-tools scrcpy polkit xdg-utils
+
+      - uses: actions/checkout@v4
+
+      - name: Build package
+        run: |
+          git config --global --add safe.directory "$PWD"
+          source packaging/arch/PKGBUILD
+          git archive --format=tar.gz --prefix="Android-Tools-$pkgver/" \
+            -o "packaging/arch/$pkgname-$pkgver.tar.gz" HEAD
+          useradd -m builder
+          chown -R builder .
+          su builder -c "cd packaging/arch && makepkg -f --noconfirm"
+          cp packaging/arch/$pkgname-$pkgver-*-x86_64.pkg.tar.zst packaging/arch/android-tools-gui-x86_64.pkg.tar.zst
+          ls -la packaging/arch/*.pkg.tar.zst
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: arch-package
+          path: packaging/arch/*.pkg.tar.zst
+
+      - name: Attach to release
+        if: github.event_name == 'release' || github.event.inputs.tag != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.release.tag_name || github.event.inputs.tag }}
+        run: gh release upload "$TAG" packaging/arch/*.pkg.tar.zst --clobber -R "$GITHUB_REPOSITORY"
