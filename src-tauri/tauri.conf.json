@@ -29,6 +29,10 @@
   },
   "bundle": {
     "active": false,
+    "publisher": "Kismeria",
+    "copyright": "Copyright (c) 2026 Kismeria. MIT License.",
+    "shortDescription": "Android Tools",
+    "longDescription": "Control an Android phone from your PC: screen, apps, files, webcam.",
     "icon": [
       "icons/icon.ico",
       "icons/icon.png"
