@@ -36,6 +36,9 @@ npm run build        # → src-tauri/target/release/Android Tools.exe
 | `src-tauri/vcam/` | C++ DLL источника камеры |
 | `ui/` | HTML/CSS/JS интерфейс |
 
+## Лицензия
+MIT — см. [LICENSE](LICENSE).
+
 ## Лицензии сторонних компонентов
 - [scrcpy](https://github.com/Genymobile/scrcpy) — Apache License 2.0.
 - adb — часть [Android SDK Platform Tools](https://developer.android.com/tools/releases/platform-tools).
