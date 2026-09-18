@@ -136,8 +136,9 @@ pub fn mirror_stop(state: State<'_, AppState>) {
 }
 
 #[tauri::command]
-pub fn mirror_running(state: State<'_, AppState>) -> bool {
-    state.mirror.lock().unwrap().running()
+pub fn mirror_state(state: State<'_, AppState>) -> Value {
+    let mut m = state.mirror.lock().unwrap();
+    json!({ "running": m.running(), "input_blocked": m.input_blocked() })
 }
 
 // ── camera ──

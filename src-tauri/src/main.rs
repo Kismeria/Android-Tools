@@ -23,10 +23,38 @@ fn black_titlebar(window: &tauri::WebviewWindow) {
     }
 }
 
+/// Windows 10 may lack the WebView2 runtime that renders the UI: explain and offer the installer.
+fn ensure_webview2() -> bool {
+    use windows::core::w;
+    use windows::Win32::UI::WindowsAndMessaging::{MessageBoxW, IDYES, MB_ICONWARNING, MB_YESNO};
+    if tauri::webview_version().is_ok() {
+        return true;
+    }
+    let answer = unsafe {
+        MessageBoxW(
+            None,
+            w!("Для работы Android Tools нужен компонент Microsoft Edge WebView2 Runtime.
+
+Открыть страницу загрузки? После установки запустите программу снова."),
+            w!("Android Tools"),
+            MB_YESNO | MB_ICONWARNING,
+        )
+    };
+    if answer == IDYES {
+        let _ = util::hidden("cmd")
+            .args(["/c", "start", "", "https://go.microsoft.com/fwlink/p/?LinkId=2124703"])
+            .spawn();
+    }
+    false
+}
+
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     if let Some(code) = camera::install::handle_cli(&args) {
         std::process::exit(code);
+    }
+    if !ensure_webview2() {
+        return;
     }
 
     tauri::Builder::default()
@@ -60,7 +88,7 @@ fn main() {
             commands::wifi_scan,
             commands::mirror_start,
             commands::mirror_stop,
-            commands::mirror_running,
+            commands::mirror_state,
             commands::camera_start,
             commands::camera_stop,
             commands::camera_live,

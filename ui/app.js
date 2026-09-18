@@ -16,7 +16,7 @@ const DEFAULTS = {
   screen: {
     preset: "balance", max_size: 1600, fps: 60, bitrate: 8, codec: "h264", audio: true, turn_off: false,
     stay_awake: true, touches: false, on_top: false, borderless: false, fullscreen: false, view_only: false,
-    uhid: false, record: false,
+    uhid: false, uhid_mouse: false, record: false,
   },
   camera: {
     facing: "front", camera_id: "", quality: 720, fps: 30, bitrate: 6, rotation: 0, mirror: false, fill: false,
@@ -445,6 +445,7 @@ registerPage("screen", {
     if (!serial) return;
     $("#scrStart").disabled = true;
     try {
+      this.warned = false;
       await call("mirror_start", {
         serial, title: `${devName()} — Android Tools`, saveDir: cfg.save_dir, settings: cfg.screen,
       });
@@ -456,8 +457,36 @@ registerPage("screen", {
   },
   async watch() {
     if (!this.running) return;
-    const r = await call("mirror_running", {}, { busy: false, quiet: true }).catch(() => false);
-    if (!r) this.setRunning(false);
+    const st = await call("mirror_state", {}, { busy: false, quiet: true }).catch(() => null);
+    if (!st?.running) return this.setRunning(false);
+    if (st.input_blocked && !this.warned) {
+      this.warned = true;
+      this.inputBlocked();
+    }
+  },
+  // Firmware blocks adb input: show the exact setting for this brand and offer HID mouse.
+  async inputBlocked() {
+    const brand = (S.info[S.serial]?.brand || "").toLowerCase();
+    let where = "";
+    if (/xiaomi|redmi|poco/.test(brand)) {
+      where = "Настройки → Для разработчиков → включите «Отладка по USB (настройки безопасности)». Нужны SIM-карта и вход в Mi-аккаунт.";
+    } else if (/oppo|realme|oneplus/.test(brand)) {
+      where = "Настройки → Для разработчиков → включите «Отключить мониторинг разрешений».";
+    } else if (/vivo|iqoo/.test(brand)) {
+      where = "Настройки → Для разработчиков → включите «Отладка по USB (настройки безопасности)», если есть.";
+    }
+    const text = "Прошивка телефона запрещает управление через adb — поэтому мышь и клавиатура не работают. "
+      + (where ? `Исправить: ${where} Затем перезапустите трансляцию. ` : "")
+      + "Или включите HID‑мышь и HID‑клавиатуру — они работают без этой настройки.";
+    const ok = await modal({ title: "Управление заблокировано", text, ok: "Включить HID и перезапустить", kind: "primary" });
+    if (!ok) return;
+    cfg.screen.uhid_mouse = true;
+    cfg.screen.uhid = true;
+    save();
+    repaint($("#page-screen"));
+    await call("mirror_stop", {}, { busy: false });
+    this.setRunning(false);
+    this.toggle();
   },
   setRunning(on) {
     this.running = on;
@@ -554,6 +583,12 @@ registerPage("camera", {
     const label = $("#vcamState");
     if (!st) return;
     this.vcam = st;
+    if (!st.supported) {
+      label.innerHTML = `<span class="warn">Нужна Windows 11</span> · в Windows 10 нет системных виртуальных камер. Превью работает.`;
+      $("#vcamInstall").style.display = "none";
+      $("#vcamRemove").style.display = "none";
+      return;
+    }
     if (st.device) {
       label.innerHTML = `<span class="ok">✓ Установлена</span>`;
     } else if (st.registered) {
@@ -585,7 +620,7 @@ registerPage("camera", {
     const serial = requireDevice();
     if (!serial) return;
     if (!S.info[serial]) await refreshInfo(serial);
-    if (this.vcam && !this.vcam.device) toast("Камера Windows не установлена — будет только превью");
+    if (this.vcam && this.vcam.supported && !this.vcam.device) toast("Камера Windows не установлена — будет только превью");
     const c = cfg.camera;
     this.setRunning(true);
     $("#camStatus").textContent = "Подключение…";

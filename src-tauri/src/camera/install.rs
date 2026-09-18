@@ -4,7 +4,8 @@ use std::fs;
 use std::path::PathBuf;
 
 use serde::Serialize;
-use windows::core::{w, HSTRING, PCWSTR};
+use windows::core::{s, w, Interface, HSTRING, PCWSTR};
+use windows::Win32::System::LibraryLoader::{GetProcAddress, LoadLibraryW};
 use windows::Win32::Foundation::{CloseHandle, WAIT_OBJECT_0, ERROR_CANCELLED};
 use windows::Win32::Media::MediaFoundation::*;
 use windows::Win32::System::Com::{CoInitializeEx, CoTaskMemFree, COINIT_MULTITHREADED};
@@ -48,21 +49,16 @@ pub fn handle_cli(args: &[String]) -> Option<i32> {
 }
 
 fn install() -> Res<()> {
+    if !supported() {
+        return Err(UNSUPPORTED.into());
+    }
     enable_services()?;
     let dll = write_dll()?;
     register_clsid(&dll)?;
     unsafe {
         let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
         MFStartup(MF_VERSION, MFSTARTUP_NOSOCKET).map_err(|e| format!("MFStartup: {e}"))?;
-        let cam = MFCreateVirtualCamera(
-            MFVirtualCameraType_SoftwareCameraSource,
-            MFVirtualCameraLifetime_System,
-            MFVirtualCameraAccess_AllUsers,
-            &HSTRING::from(CAMERA_NAME),
-            &HSTRING::from(CLSID_STR),
-            None,
-        )
-        .map_err(|e| format!("Создание камеры: {e}"))?;
+        let cam = create_virtual_camera()?;
         let started = cam.Start(None);
         let _ = MFShutdown();
         started.map_err(|e| format!("Запуск камеры: {e}"))?;
@@ -74,14 +70,7 @@ fn remove() -> Res<()> {
     unsafe {
         let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
         MFStartup(MF_VERSION, MFSTARTUP_NOSOCKET).map_err(|e| e.to_string())?;
-        if let Ok(cam) = MFCreateVirtualCamera(
-            MFVirtualCameraType_SoftwareCameraSource,
-            MFVirtualCameraLifetime_System,
-            MFVirtualCameraAccess_AllUsers,
-            &HSTRING::from(CAMERA_NAME),
-            &HSTRING::from(CLSID_STR),
-            None,
-        ) {
+        if let Ok(cam) = create_virtual_camera() {
             let _ = cam.Remove();
         }
         let _ = MFShutdown();
@@ -179,10 +168,53 @@ fn register_clsid(dll: &std::path::Path) -> Res<()> {
     Ok(())
 }
 
+/// MFCreateVirtualCamera exists only on Windows 11 (build 22000+). It is resolved at run time:
+/// a static import would stop the whole exe from starting on Windows 10.
+type CreateVirtualCameraFn = unsafe extern "system" fn(
+    i32, i32, i32, PCWSTR, PCWSTR, *const windows::core::GUID, u32, *mut *mut core::ffi::c_void,
+) -> windows::core::HRESULT;
+
+fn create_virtual_camera_fn() -> Option<CreateVirtualCameraFn> {
+    unsafe {
+        let lib = LoadLibraryW(w!("mfsensorgroup.dll")).ok()?;
+        let proc = GetProcAddress(lib, s!("MFCreateVirtualCamera"))?;
+        Some(std::mem::transmute::<_, CreateVirtualCameraFn>(proc))
+    }
+}
+
+pub fn supported() -> bool {
+    create_virtual_camera_fn().is_some()
+}
+
+fn create_virtual_camera() -> Res<IMFVirtualCamera> {
+    let create = create_virtual_camera_fn().ok_or(UNSUPPORTED)?;
+    let name = HSTRING::from(CAMERA_NAME);
+    let id = HSTRING::from(CLSID_STR);
+    unsafe {
+        let mut raw = std::ptr::null_mut();
+        create(
+            MFVirtualCameraType_SoftwareCameraSource.0,
+            MFVirtualCameraLifetime_System.0,
+            MFVirtualCameraAccess_AllUsers.0,
+            PCWSTR(name.as_ptr()),
+            PCWSTR(id.as_ptr()),
+            std::ptr::null(),
+            0,
+            &mut raw,
+        )
+        .ok()
+        .map_err(|e| format!("Создание камеры: {e}"))?;
+        Ok(IMFVirtualCamera::from_raw(raw))
+    }
+}
+
+const UNSUPPORTED: &str = "Системная камера доступна только в Windows 11";
+
 // ── non-elevated side ──
 
 #[derive(Serialize)]
 pub struct CameraStatus {
+    pub supported: bool,
     pub registered: bool,
     pub device: bool,
     pub service_disabled: bool,
@@ -204,7 +236,7 @@ pub fn status() -> CameraStatus {
             }
             let _ = CloseServiceHandle(scm);
         }
-        CameraStatus { registered, device: registered && device_present(), service_disabled }
+        CameraStatus { supported: supported(), registered, device: registered && device_present(), service_disabled }
     }
 }
 

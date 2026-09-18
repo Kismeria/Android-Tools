@@ -2,6 +2,7 @@
 use std::io::{BufRead, BufReader};
 use std::path::PathBuf;
 use std::process::{Child, Stdio};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
@@ -25,6 +26,8 @@ pub struct MirrorSettings {
     pub fullscreen: bool,
     pub view_only: bool,
     pub uhid: bool,
+    #[serde(default)]
+    pub uhid_mouse: bool,
     pub record: bool,
 }
 
@@ -55,6 +58,9 @@ pub fn build_args(serial: &str, s: &MirrorSettings, title: &str, record_dir: &st
         if s.uhid {
             a.push("--keyboard=uhid".into());
         }
+        if s.uhid_mouse {
+            a.push("--mouse=uhid".into());
+        }
     }
     for (on, flag) in [
         (s.touches, "--show-touches"),
@@ -78,6 +84,7 @@ pub fn build_args(serial: &str, s: &MirrorSettings, title: &str, record_dir: &st
 #[derive(Default)]
 pub struct Mirror {
     child: Option<Child>,
+    blocked: Arc<AtomicBool>,
 }
 
 impl Mirror {
@@ -103,14 +110,20 @@ impl Mirror {
             .map_err(err)?;
 
         let lines = Arc::new(Mutex::new(Vec::<String>::new()));
+        let blocked = Arc::new(AtomicBool::new(false));
+        self.blocked = blocked.clone();
         for pipe in [child.stdout.take().map(|p| Box::new(p) as Box<dyn std::io::Read + Send>),
                      child.stderr.take().map(|p| Box::new(p) as Box<dyn std::io::Read + Send>)]
             .into_iter()
             .flatten()
         {
             let lines = lines.clone();
+            let blocked = blocked.clone();
             std::thread::spawn(move || {
                 for line in BufReader::new(pipe).lines().map_while(Result::ok) {
+                    if line.contains("INJECT_EVENTS") {
+                        blocked.store(true, Ordering::Relaxed);
+                    }
                     let mut l = lines.lock().unwrap();
                     l.push(line);
                     let n = l.len();
@@ -139,6 +152,12 @@ impl Mirror {
         }
         self.child = Some(child);
         Ok(())
+    }
+
+    /// Some firmwares (MIUI/HyperOS, ColorOS…) forbid adb input injection: the phone shows
+    /// but ignores mouse and keyboard. scrcpy logs a SecurityException about INJECT_EVENTS.
+    pub fn input_blocked(&self) -> bool {
+        self.blocked.load(Ordering::Relaxed)
     }
 
     pub fn stop(&mut self) {
