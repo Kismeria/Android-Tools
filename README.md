@@ -17,6 +17,9 @@ npm run build        # → src-tauri/target/release/Android Tools.exe
 - `AndroidToolsCam.dll` — источник видео Media Foundation для системной камеры.
 
 ## Камера Windows
+- **Windows 11** — системная камера Media Foundation (видна везде, включая приложение «Камера»).
+- **Windows 10** — DirectShow-камера на основе [softcam](https://github.com/tshino/softcam) (`src-tauri/softcam`, MIT): видна в Zoom, Discord, Teams, Telegram, OBS, Chrome, Edge; 64- и 32-битные версии.
+
 «Камера» → «Установить» (UAC, один раз):
 1. включает службы `FrameServer` / `FrameServerMonitor`, если они отключены;
 2. копирует DLL в `%ProgramData%\AndroidTools\Camera`, регистрирует COM-класс;
@@ -41,4 +44,5 @@ MIT — см. [LICENSE](LICENSE).
 
 ## Лицензии сторонних компонентов
 - [scrcpy](https://github.com/Genymobile/scrcpy) — Apache License 2.0.
+- [softcam](https://github.com/tshino/softcam) — MIT (DirectShow-камера для Windows 10).
 - adb — часть [Android SDK Platform Tools](https://developer.android.com/tools/releases/platform-tools).

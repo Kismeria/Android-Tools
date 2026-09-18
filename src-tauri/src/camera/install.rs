@@ -41,6 +41,7 @@ pub fn handle_cli(args: &[String]) -> Option<i32> {
     let result = match action.as_str() {
         "--camera-install" => install(),
         "--camera-remove" => remove(),
+        "--camera-install-dshow" => super::dshow::install(),
         _ => return None,
     };
     let _ = fs::create_dir_all(camera_dir());
@@ -49,8 +50,8 @@ pub fn handle_cli(args: &[String]) -> Option<i32> {
 }
 
 fn install() -> Res<()> {
-    if !supported() {
-        return Err(UNSUPPORTED.into());
+    if use_dshow() {
+        return super::dshow::install();
     }
     enable_services()?;
     let dll = write_dll()?;
@@ -67,6 +68,7 @@ fn install() -> Res<()> {
 }
 
 fn remove() -> Res<()> {
+    let _ = super::dshow::remove();
     unsafe {
         let _ = CoInitializeEx(None, COINIT_MULTITHREADED);
         MFStartup(MF_VERSION, MFSTARTUP_NOSOCKET).map_err(|e| e.to_string())?;
@@ -186,8 +188,13 @@ pub fn supported() -> bool {
     create_virtual_camera_fn().is_some()
 }
 
+/// Windows 10 (or ATOOLS_DSHOW=1 for testing on Windows 11) uses the DirectShow camera.
+pub fn use_dshow() -> bool {
+    !supported() || std::env::var_os("ATOOLS_DSHOW").is_some()
+}
+
 fn create_virtual_camera() -> Res<IMFVirtualCamera> {
-    let create = create_virtual_camera_fn().ok_or(UNSUPPORTED)?;
+    let create = create_virtual_camera_fn().ok_or("MFCreateVirtualCamera: нужна Windows 11")?;
     let name = HSTRING::from(CAMERA_NAME);
     let id = HSTRING::from(CLSID_STR);
     unsafe {
@@ -208,12 +215,13 @@ fn create_virtual_camera() -> Res<IMFVirtualCamera> {
     }
 }
 
-const UNSUPPORTED: &str = "Системная камера доступна только в Windows 11";
 
 // ── non-elevated side ──
 
 #[derive(Serialize)]
 pub struct CameraStatus {
+    /// "mf" — Windows 11 system camera, "dshow" — DirectShow camera for Windows 10.
+    pub kind: &'static str,
     pub supported: bool,
     pub registered: bool,
     pub device: bool,
@@ -236,7 +244,11 @@ pub fn status() -> CameraStatus {
             }
             let _ = CloseServiceHandle(scm);
         }
-        CameraStatus { supported: supported(), registered, device: registered && device_present(), service_disabled }
+        if use_dshow() {
+            let reg = super::dshow::registered();
+            return CameraStatus { kind: "dshow", supported: true, registered: reg, device: reg, service_disabled: false };
+        }
+        CameraStatus { kind: "mf", supported: true, registered, device: registered && device_present(), service_disabled }
     }
 }
 

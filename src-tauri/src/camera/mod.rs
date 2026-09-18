@@ -2,6 +2,7 @@
 //! scrcpy-server streams H.264 over an adb reverse tunnel; frames are decoded with Media
 //! Foundation, transformed, and published to shared memory for the camera DLL.
 pub mod decoder;
+pub mod dshow;
 pub mod install;
 pub mod output;
 pub mod transform;
@@ -146,7 +147,7 @@ impl Ctx {
 
     fn size(&self) -> (u32, u32) {
         match self.s.quality {
-            480 => (854, 480),
+            480 => (848, 480), // DirectShow camera needs multiples of 4
             1080 => (1920, 1080),
             _ => (1280, 720),
         }
@@ -282,8 +283,33 @@ impl Ctx {
         let (max_w, max_h) = SharedFrame::max_size();
         let (out_w, out_h) = (out_w.min(max_w), out_h.min(max_h));
 
+        // Windows 10: DirectShow camera. Windows 11: Media Foundation camera via shared memory.
+        let dshow_mode = install::use_dshow();
+        // The DirectShow camera is fed from its own thread at a fixed rate with the latest
+        // picture, so apps keep receiving frames while the phone sends none (static image).
+        let latest_bgr: Arc<Mutex<Option<Vec<u8>>>> = Arc::new(Mutex::new(None));
+        if dshow_mode {
+            let sender = dshow::Sender::open(out_w, out_h, self.s.fps);
+            match sender {
+                Ok(sender) => {
+                    let (latest, stop) = (latest_bgr.clone(), self.stop.clone());
+                    std::thread::spawn(move || {
+                        let mut frame = vec![0u8; (sender.width * sender.height * 3) as usize];
+                        while !stop.load(Ordering::SeqCst) {
+                            if let Some(new) = latest.lock().unwrap().take() {
+                                frame = new;
+                            }
+                            sender.send(&frame);
+                        }
+                    });
+                }
+                Err(e) => self.error(format!("Камера Windows: {e}")),
+            }
+        }
+
         // Heartbeat + lazy (re)open of the shared frame, independent of frame arrival.
-        let shared: Arc<Mutex<Option<SharedFrame>>> = Arc::new(Mutex::new(SharedFrame::open()));
+        let shared: Arc<Mutex<Option<SharedFrame>>> =
+            Arc::new(Mutex::new(if dshow_mode { None } else { SharedFrame::open() }));
         let decoded = Arc::new(AtomicU32::new(0));
         {
             let (shared, stop, decoded) = (shared.clone(), self.stop.clone(), decoded.clone());
@@ -294,7 +320,7 @@ impl Ctx {
                 let mut tick = Instant::now();
                 while !stop.load(Ordering::SeqCst) {
                     std::thread::sleep(Duration::from_millis(250));
-                    {
+                    if !dshow_mode {
                         let mut g = shared.lock().unwrap();
                         match g.as_ref() {
                             Some(f) => f.touch(),
@@ -357,6 +383,11 @@ impl Ctx {
             decoded.fetch_add(1, Ordering::Relaxed);
             if let Some(f) = shared.lock().unwrap().as_ref() {
                 f.write(out_w, out_h, &canvas.data);
+            }
+            if dshow_mode {
+                let mut bgr = Vec::new();
+                canvas.to_bgr(&mut bgr);
+                *latest_bgr.lock().unwrap() = Some(bgr);
             }
             if live.preview && last_preview.elapsed() >= Duration::from_millis(80) {
                 last_preview = Instant::now();

@@ -104,6 +104,26 @@ impl Canvas {
         }
     }
 
+    /// Full-size top-down BGR (DirectShow camera input).
+    pub fn to_bgr(&self, out: &mut Vec<u8>) {
+        let (w, h) = (self.width as usize, self.height as usize);
+        out.resize(w * h * 3, 0);
+        let (yp, uvp) = self.data.split_at(w * h);
+        for y in 0..h {
+            let row = &yp[y * w..(y + 1) * w];
+            let uvrow = &uvp[(y / 2) * w..(y / 2) * w + w];
+            let dst = &mut out[y * w * 3..(y + 1) * w * 3];
+            for x in 0..w {
+                let c = 298 * (row[x] as i32 - 16);
+                let u = uvrow[x & !1] as i32 - 128;
+                let v = uvrow[(x & !1) + 1] as i32 - 128;
+                dst[x * 3] = ((c + 516 * u + 128) >> 8).clamp(0, 255) as u8;
+                dst[x * 3 + 1] = ((c - 100 * u - 208 * v + 128) >> 8).clamp(0, 255) as u8;
+                dst[x * 3 + 2] = ((c + 409 * v + 128) >> 8).clamp(0, 255) as u8;
+            }
+        }
+    }
+
     /// Small RGB rendition for the UI preview.
     pub fn preview_rgb(&self, out_w: u32) -> (Vec<u8>, u32, u32) {
         let out_h = (out_w as u64 * self.height as u64 / self.width as u64) as u32 & !1;

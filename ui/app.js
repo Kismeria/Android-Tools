@@ -583,14 +583,12 @@ registerPage("camera", {
     const label = $("#vcamState");
     if (!st) return;
     this.vcam = st;
-    if (!st.supported) {
-      label.innerHTML = `<span class="warn">Нужна Windows 11</span> · в Windows 10 нет системных виртуальных камер. Превью работает.`;
-      $("#vcamInstall").style.display = "none";
-      $("#vcamRemove").style.display = "none";
-      return;
-    }
+    const dshow = st.kind === "dshow";
+    $("#vcamNote").textContent = dshow
+      ? "Windows 10: камера видна в Zoom, Discord, Teams, Telegram, OBS, Chrome и Edge. Встроенное приложение «Камера» Windows её не показывает. Установка один раз, нужны права администратора."
+      : "Системное устройство: «Камера» Windows, Zoom, Teams, Discord, Telegram, OBS, браузеры. Установка один раз, нужны права администратора.";
     if (st.device) {
-      label.innerHTML = `<span class="ok">✓ Установлена</span>`;
+      label.innerHTML = `<span class="ok">✓ Установлена</span>${dshow ? " · DirectShow" : ""}`;
     } else if (st.registered) {
       label.innerHTML = `<span class="warn">Зарегистрирована, но не видна${st.service_disabled ? " — служба камер отключена" : ""}</span>`;
     } else {
