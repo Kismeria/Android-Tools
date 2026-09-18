@@ -1,0 +1,14 @@
+{
+  "name": "android-tools",
+  "private": true,
+  "version": "2.0.0",
+  "scripts": {
+    "tauri": "tauri",
+    "dev": "tauri dev",
+    "build": "tauri build --no-bundle",
+    "fetch-tools": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/fetch-tools.ps1"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2"
+  }
+}
