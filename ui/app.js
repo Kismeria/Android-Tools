@@ -592,6 +592,7 @@ registerPage("camera", {
     this.vcam = st;
     const dshow = st.kind === "dshow";
     const v4l2 = st.kind === "v4l2";
+    $("#vcamSection").textContent = v4l2 ? "Системная камера" : "Камера Windows";
     $("#vcamNote").textContent = v4l2
       ? "Linux: камера видна во всех программах (v4l2loopback). Установка один раз, нужен пароль администратора."
       : dshow
@@ -1232,6 +1233,7 @@ function chooseLanguage() {
   if (!cfg.lang) {
     cfg.lang = await chooseLanguage();
     save();
+    repaint($("#page-settings"));
   }
   I18N.apply(cfg.lang);
   call("set_language", { lang: cfg.lang }, { busy: false, quiet: true }).catch(() => {});

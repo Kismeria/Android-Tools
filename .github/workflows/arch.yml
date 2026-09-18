@@ -41,9 +41,25 @@ jobs:
           name: arch-package
           path: packaging/arch/*.pkg.tar.zst
 
+      - name: Smoke test (start the app under Xvfb and take a screenshot)
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          pacman -S --noconfirm --needed xorg-server-xvfb imagemagick noto-fonts ttf-dejavu
+          pacman -U --noconfirm packaging/arch/android-tools-gui-x86_64.pkg.tar.zst
+          su builder -c 'xvfb-run -a -s "-screen 0 1280x860x24" sh -c "android-tools-gui & sleep 20; import -window root /tmp/linux.png; kill %1"' || true
+          test -s /tmp/linux.png && cp /tmp/linux.png .
+
+      - uses: actions/upload-artifact@v4
+        if: github.event_name == 'workflow_dispatch'
+        with:
+          name: linux-screenshot
+          path: linux.png
+          if-no-files-found: ignore
+
       - name: Attach to release
         if: github.event_name == 'release' || github.event.inputs.tag != ''
         env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.event.release.tag_name || github.event.inputs.tag }}
-        run: gh release upload "$TAG" packaging/arch/*.pkg.tar.zst --clobber -R "$GITHUB_REPOSITORY"
+        run: |
+          gh release upload "$TAG" packaging/arch/android-tools-gui-x86_64.pkg.tar.zst             packaging/arch/android-tools-gui-*-x86_64.pkg.tar.zst --clobber -R "$GITHUB_REPOSITORY"

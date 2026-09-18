@@ -348,6 +348,8 @@ const EN = [
   ["Превью недоступно в Linux — откройте камеру в любой программе", "No preview on Linux — open the camera in any app"],
   ["Нужен пакет v4l2loopback-dkms", "Requires the v4l2loopback-dkms package"],
   ["Язык", "Language"],
+  ["Камера Windows", "Windows camera"],
+  ["Системная камера", "System camera"],
 ];
 
 const I18N = (() => {

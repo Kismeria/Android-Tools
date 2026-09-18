@@ -6,6 +6,7 @@ pkgdesc="Android Tools: control an Android phone from the PC — scrcpy screen, 
 arch=('x86_64')
 url="https://github.com/Kismeria/Android-Tools"
 license=('MIT')
+options=('!debug')
 depends=('webkit2gtk-4.1' 'gtk3' 'android-tools' 'scrcpy' 'polkit' 'xdg-utils')
 makedepends=('rust' 'npm')
 optdepends=('v4l2loopback-dkms: use the phone as a webcam'
