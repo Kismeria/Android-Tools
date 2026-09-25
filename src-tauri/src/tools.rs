@@ -130,7 +130,7 @@ pub fn info() -> ToolsInfo {
     }
 }
 
-fn download(url: &str) -> Res<Vec<u8>> {
+pub fn download(url: &str) -> Res<Vec<u8>> {
     let resp = ureq::get(url).set("User-Agent", "AndroidTools").call().map_err(err)?;
     let mut buf = Vec::new();
     resp.into_reader().take(200 * 1024 * 1024).read_to_end(&mut buf).map_err(err)?;

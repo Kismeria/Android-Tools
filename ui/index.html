@@ -1,9 +1,10 @@
 <!doctype html>
-<html lang="ru">
+<html lang="ru" data-style="modern" data-palette="oled">
 <head>
   <meta charset="utf-8">
   <title>Android Tools</title>
   <link rel="stylesheet" href="style.css">
+  <link rel="stylesheet" href="themes.css">
 </head>
 <body>
 <div class="app">
@@ -12,11 +13,12 @@
     <button class="nav" data-page="devices" title="Устройства · Ctrl+1"><i class="ic">&#xE772;</i><span>Девайсы</span></button>
     <button class="nav" data-page="screen" title="Экран · Ctrl+2"><i class="ic">&#xE7F4;</i><span>Экран</span></button>
     <button class="nav" data-page="camera" title="Камера · Ctrl+3"><i class="ic">&#xE722;</i><span>Камера</span></button>
-    <button class="nav" data-page="apps" title="Приложения · Ctrl+4"><i class="ic">&#xE71D;</i><span>Апки</span></button>
-    <button class="nav" data-page="files" title="Файлы · Ctrl+5"><i class="ic">&#xE8B7;</i><span>Файлы</span></button>
-    <button class="nav" data-page="utils" title="Утилиты · Ctrl+6"><i class="ic">&#xE90F;</i><span>Утилиты</span></button>
+    <button class="nav" data-page="mic" title="Микрофон · Ctrl+4"><i class="ic">&#xE720;</i><span>Микрофон</span></button>
+    <button class="nav" data-page="apps" title="Приложения · Ctrl+5"><i class="ic">&#xE71D;</i><span>Апки</span></button>
+    <button class="nav" data-page="files" title="Файлы · Ctrl+6"><i class="ic">&#xE8B7;</i><span>Файлы</span></button>
+    <button class="nav" data-page="utils" title="Утилиты · Ctrl+7"><i class="ic">&#xE90F;</i><span>Утилиты</span></button>
     <div class="spacer"></div>
-    <button class="nav" data-page="settings" title="Опции · Ctrl+7"><i class="ic">&#xE713;</i><span>Опции</span></button>
+    <button class="nav" data-page="settings" title="Настройки · Ctrl+8"><i class="ic">&#xE713;</i><span>Опции</span><b class="badge-dot" id="updateDot"></b></button>
   </aside>
 
   <main>
@@ -33,31 +35,66 @@
       <template data-actions>
         <button class="btn icon" data-act="refresh" title="Обновить · F5"><i class="ic">&#xE72C;</i></button>
       </template>
-      <div class="section">Подключены</div>
-      <div id="deviceList"></div>
-      <div class="card empty" id="deviceEmpty">
-        <i class="ic">&#xE8EA;</i>
-        <div class="big">Нет устройств</div>
-        <div class="hint">Подключите телефон по USB и включите отладку по USB</div>
-      </div>
-      <div class="gap"></div>
-      <div class="section">Беспроводное</div>
-      <div class="card">
-        <div class="row" style="margin-bottom:14px">
-          <i class="ic hint" style="font-size:15px">&#xE701;</i><span class="big">Wi‑Fi</span>
-          <div class="grow"></div>
-          <button class="btn icon" id="wifiScan" title="Найти в сети"><i class="ic">&#xE721;</i></button>
+      <div class="cols" style="grid-template-columns: 1fr 330px">
+        <div class="stack">
+          <div>
+            <div class="section">Подключены</div>
+            <div id="deviceList"></div>
+            <div class="card empty" id="deviceEmpty">
+              <i class="ic">&#xE8EA;</i>
+              <div class="big">Нет устройств</div>
+              <div class="hint">Подключите телефон по USB и включите отладку по USB</div>
+            </div>
+          </div>
+          <div class="card">
+            <div class="row" style="margin-bottom:14px">
+              <i class="ic hint" style="font-size:15px">&#xE701;</i><span class="big">Wi‑Fi</span>
+              <div class="grow"></div>
+              <button class="btn small" id="wifiScan" title="Найти в сети"><i class="ic">&#xE721;</i>Найти</button>
+            </div>
+            <div class="row" style="margin-bottom:10px">
+              <input type="text" id="wifiAddr" class="grow" placeholder="192.168.1.20:5555">
+              <button class="btn" id="wifiConnect" style="width:190px"><i class="ic">&#xE71B;</i>Подключить</button>
+            </div>
+            <div class="row" style="margin-bottom:10px">
+              <input type="text" id="pairAddr" class="grow" placeholder="IP:порт сопряжения">
+              <input type="text" id="pairCode" placeholder="Код" maxlength="6" style="width:96px">
+              <button class="btn" id="wifiPair" style="width:190px"><i class="ic">&#xE8AB;</i>Сопряжение</button>
+            </div>
+            <div class="faint">Android 11+: Для разработчиков → Отладка по Wi‑Fi → Сопряжение по коду</div>
+          </div>
+          <div class="card grow-card">
+            <div class="section">Как подключить</div>
+            <div class="steps">
+              <div class="step"><b>1</b><div><div>Режим разработчика</div><div class="hint">Настройки → О телефоне → 7 раз нажать «Номер сборки»</div></div></div>
+              <div class="step"><b>2</b><div><div>Отладка по USB</div><div class="hint">Для разработчиков → включить «Отладка по USB»</div></div></div>
+              <div class="step"><b>3</b><div><div>Кабель и разрешение</div><div class="hint">Подключите кабель и нажмите «Разрешить» на экране телефона</div></div></div>
+            </div>
+          </div>
         </div>
-        <div class="row" style="margin-bottom:10px">
-          <input type="text" id="wifiAddr" class="grow" placeholder="192.168.1.20:5555">
-          <button class="btn" id="wifiConnect" style="width:210px"><i class="ic">&#xE71B;</i>Подключить</button>
+        <div class="stack">
+          <div class="card devpanel">
+            <div class="phone-art small"><i class="ic">&#xE8EA;</i></div>
+            <div class="big center" id="dpName">Нет устройства</div>
+            <div class="hint center" id="dpSub">Подключите телефон</div>
+            <div class="bars">
+              <div class="barline"><span class="hint">Батарея</span><div class="bar"><i id="dpBattery"></i></div><span class="mono" id="dpBatteryT">—</span></div>
+              <div class="barline"><span class="hint">Память</span><div class="bar"><i id="dpStorage"></i></div><span class="mono" id="dpStorageT">—</span></div>
+            </div>
+            <div class="kv" id="dpKv"></div>
+          </div>
+          <div class="card grow-card">
+            <div class="section">Быстрые действия</div>
+            <div class="tiles">
+              <button class="tile" data-quick="screen"><i class="ic">&#xE7F4;</i><span>Экран</span></button>
+              <button class="tile" data-quick="camera"><i class="ic">&#xE722;</i><span>Камера</span></button>
+              <button class="tile" data-quick="mic"><i class="ic">&#xE720;</i><span>Микрофон</span></button>
+              <button class="tile" data-quick="shot"><i class="ic">&#xEB9F;</i><span>Скриншот</span></button>
+              <button class="tile" data-quick="files"><i class="ic">&#xE8B7;</i><span>Файлы</span></button>
+              <button class="tile" data-quick="apps"><i class="ic">&#xE71D;</i><span>Приложения</span></button>
+            </div>
+          </div>
         </div>
-        <div class="row" style="margin-bottom:10px">
-          <input type="text" id="pairAddr" class="grow" placeholder="IP:порт сопряжения">
-          <input type="text" id="pairCode" placeholder="Код" maxlength="6" style="width:96px">
-          <button class="btn" id="wifiPair" style="width:210px"><i class="ic">&#xE8AB;</i>Сопряжение</button>
-        </div>
-        <div class="faint">Android 11+: Для разработчиков → Отладка по Wi‑Fi → Сопряжение по коду</div>
       </div>
     </section>
 
@@ -72,11 +109,11 @@
             <button class="btn primary big block" id="scrStart"><i class="ic">&#xE768;</i><span>Запустить</span></button>
             <div class="gap"></div>
             <div class="section" style="margin-bottom:8px">Профиль</div>
-            <div class="seg" id="scrPreset">
+            <div class="seg full" id="scrPreset">
               <button data-v="fast">Быстро</button><button data-v="balance">Баланс</button><button data-v="max">Максимум</button>
             </div>
           </div>
-          <div class="card">
+          <div class="card grow-card">
             <div class="section">Горячие клавиши</div>
             <div class="keys">
               <span class="mono">Alt + F</span><span class="hint">Весь экран</span>
@@ -105,15 +142,26 @@
               <div class="seg" data-bind="screen.codec">
                 <button data-v="h264">H.264</button><button data-v="h265">H.265</button><button data-v="av1">AV1</button>
               </div></div>
+            <div class="line"><span class="label">Ориентация</span>
+              <div class="seg" data-bind="screen.orientation">
+                <button data-v="">Авто</button><button data-v="0">0°</button><button data-v="90">90°</button><button data-v="180">180°</button><button data-v="270">270°</button>
+              </div></div>
             <div class="slider">
               <div class="row"><span>Битрейт</span><div class="grow"></div><span class="hint" data-out="screen.bitrate">8 Мбит/с</span></div>
               <input type="range" min="1" max="50" data-bind="screen.bitrate" data-unit=" Мбит/с">
             </div>
           </div>
           <div class="card">
+            <div class="row" style="margin-bottom:12px"><div class="section" style="margin:0">Звук</div><div class="grow"></div>
+              <label class="switch inline" title="Передавать звук (Android 11+)"><input type="checkbox" data-bind="screen.audio"><i class="knob"></i></label></div>
+            <div class="line"><span class="label">Источник</span>
+              <div class="seg" data-bind="screen.audio_source">
+                <button data-v="output">Звук телефона</button><button data-v="mic">Микрофон</button>
+              </div></div>
+          </div>
+          <div class="card grow-card">
             <div class="section">Опции</div>
             <div class="opts">
-              <label class="switch" title="Передавать звук (Android 11+)"><i class="ic">&#xE767;</i><span class="text">Звук</span><input type="checkbox" data-bind="screen.audio"><i class="knob"></i></label>
               <label class="switch control" title="Гасить экран телефона"><i class="ic">&#xE793;</i><span class="text">Экран выкл</span><input type="checkbox" data-bind="screen.turn_off"><i class="knob"></i></label>
               <label class="switch control" title="Не блокировать телефон"><i class="ic">&#xE7E8;</i><span class="text">Не спать</span><input type="checkbox" data-bind="screen.stay_awake"><i class="knob"></i></label>
               <label class="switch" title="Показывать касания"><i class="ic">&#xE815;</i><span class="text">Касания</span><input type="checkbox" data-bind="screen.touches"><i class="knob"></i></label>
@@ -121,12 +169,11 @@
               <label class="switch"><i class="ic">&#xE7C4;</i><span class="text">Без рамки</span><input type="checkbox" data-bind="screen.borderless"><i class="knob"></i></label>
               <label class="switch"><i class="ic">&#xE740;</i><span class="text">Весь экран</span><input type="checkbox" data-bind="screen.fullscreen"><i class="knob"></i></label>
               <label class="switch" title="Без управления мышью и клавиатурой"><i class="ic">&#xE72E;</i><span class="text">Только просмотр</span><input type="checkbox" data-bind="screen.view_only"><i class="knob"></i></label>
+              <label class="switch control" title="Выключить экран телефона, когда окно закрыто"><i class="ic">&#xE7E8;</i><span class="text">Гасить при закрытии</span><input type="checkbox" data-bind="screen.power_off_on_close"><i class="knob"></i></label>
               <label class="switch control" title="Физическая клавиатура: любые раскладки"><i class="ic">&#xE765;</i><span class="text">HID‑клавиатура</span><input type="checkbox" data-bind="screen.uhid"><i class="knob"></i></label>
               <label class="switch control" title="Мышь как USB-устройство: работает, когда прошивка блокирует обычное управление"><i class="ic">&#xE962;</i><span class="text">HID‑мышь</span><input type="checkbox" data-bind="screen.uhid_mouse"><i class="knob"></i></label>
               <label class="switch" title="Сохранять видео в папку «Записи»"><i class="ic">&#xE7C8;</i><span class="text">Запись</span><input type="checkbox" data-bind="screen.record"><i class="knob"></i></label>
-            </div>
-            <div class="row" style="justify-content:flex-end;margin-top:8px">
-              <button class="btn ghost small" data-open-dir="Записи"><i class="ic">&#xE8B7;</i>Папка записей</button>
+              <div class="switch"><button class="btn ghost small left" data-open-dir="Записи"><i class="ic">&#xE8B7;</i>Папка записей</button></div>
             </div>
           </div>
         </div>
@@ -146,7 +193,7 @@
             <div class="grow"></div><span class="hint" id="camFps"></span>
           </div>
           <button class="btn primary big block" id="camStart"><i class="ic">&#xE722;</i><span>Включить камеру</span></button>
-          <div class="card">
+          <div class="card grow-card">
             <div class="section" id="vcamSection">Камера Windows</div>
             <div class="row">
               <i class="ic" style="font-size:22px;color:var(--dim)">&#xE714;</i>
@@ -190,7 +237,7 @@
               <input type="range" min="1" max="20" data-bind="camera.bitrate" data-unit=" Мбит/с">
             </div>
           </div>
-          <div class="card">
+          <div class="card grow-card">
             <div class="section">Картинка</div>
             <div class="line"><span class="label" style="width:80px">Поворот</span>
               <div class="seg" data-bind="camera.rotation" data-type="int">
@@ -200,6 +247,109 @@
             <label class="switch" title="Обрезать края вместо чёрных полос"><i class="ic">&#xE740;</i><span class="text">Заполнить кадр</span><input type="checkbox" data-bind="camera.fill"><i class="knob"></i></label>
             <label class="switch"><i class="ic">&#xE890;</i><span class="text">Превью</span><input type="checkbox" data-bind="camera.preview"><i class="knob"></i></label>
             <label class="switch" id="camTorch" title="Режим «Прямой», основная камера"><i class="ic">&#xE793;</i><span class="text">Фонарик</span><input type="checkbox" data-bind="camera.torch"><i class="knob"></i></label>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ═════════ MICROPHONE ═════════ -->
+    <section class="page" id="page-mic" data-title="Микрофон">
+      <div class="cols" style="grid-template-columns: 1fr 390px">
+        <div class="stack">
+          <div class="card mic-hero" id="micHero">
+            <div class="row" style="gap:16px">
+              <div class="mic-orb" id="micOrb"><i class="ic">&#xE720;</i></div>
+              <div class="grow">
+                <div class="big" id="micDevice">Микрофон телефона</div>
+                <div class="row" style="gap:0;margin-top:3px"><span class="status-dot" id="micDot"></span><span class="hint" id="micStatus">Выключено</span></div>
+              </div>
+              <div class="mic-db mono" id="micDb">−∞ дБ</div>
+            </div>
+            <div class="vu" id="micVu">
+              <div class="vu-fill" id="micVuFill"></div>
+              <div class="vu-peak" id="micVuPeak"></div>
+              <div class="vu-gate" id="micVuGate" title="Порог шумоподавления"></div>
+            </div>
+            <div class="vu-scale mono"><span>−60</span><span>−48</span><span>−36</span><span>−24</span><span>−12</span><span>0 дБ</span></div>
+            <canvas class="wave" id="micWave"></canvas>
+          </div>
+          <button class="btn primary big block" id="micStart"><i class="ic">&#xE720;</i><span>Включить микрофон</span></button>
+          <div class="card">
+            <div class="section">Микрофон в системе</div>
+            <div class="row">
+              <i class="ic" style="font-size:22px;color:var(--dim)">&#xE720;</i>
+              <div class="grow">
+                <div id="vmicName">Android Tools Microphone</div>
+                <div class="hint" id="vmicState">Проверка…</div>
+              </div>
+              <button class="btn primary" id="vmicInstall"><i class="ic">&#xE7EF;</i>Установить</button>
+              <button class="btn ghost icon" id="vmicRemove" title="Удалить микрофон из системы"><i class="ic">&#xE74D;</i></button>
+            </div>
+            <div class="faint" id="vmicNote" style="margin-top:12px"></div>
+          </div>
+          <div class="pair grow-card">
+          <div class="card">
+            <div class="row" style="margin-bottom:8px"><div class="section" style="margin:0">Шумовой порог</div><div class="grow"></div>
+              <label class="switch inline" title="Тишина, пока вы молчите"><input type="checkbox" data-bind="mic.gate"><i class="knob"></i></label></div>
+            <div class="slider">
+              <div class="row"><i class="ic hint">&#xE71C;</i><span>Порог</span><div class="grow"></div><span class="hint" data-out="mic.gate_db">−50 дБ</span></div>
+              <input type="range" min="-80" max="-20" data-bind="mic.gate_db" data-unit=" дБ">
+            </div>
+            <div class="faint">Пока уровень ниже порога, в систему идёт тишина: не слышно клавиатуры и фона.</div>
+          </div>
+          <div class="card">
+            <div class="row" style="margin-bottom:8px"><div class="section" style="margin:0">Прослушивание</div><div class="grow"></div>
+              <label class="switch inline" title="Слышать себя через динамики ПК"><input type="checkbox" data-bind="mic.monitor"><i class="knob"></i></label></div>
+            <div class="slider">
+              <div class="row"><i class="ic hint">&#xE7F6;</i><span>Громкость на ПК</span><div class="grow"></div><span class="hint" data-out="mic.monitor_volume">80 %</span></div>
+              <input type="range" min="0" max="200" step="5" data-bind="mic.monitor_volume" data-unit=" %">
+            </div>
+            <div class="faint">Используйте наушники, иначе будет эхо.</div>
+          </div>
+          </div>
+        </div>
+        <div class="stack">
+          <div class="card">
+            <div class="section">Источник</div>
+            <div class="line"><span class="label" style="width:90px">Режим</span>
+              <select class="grow" id="micSource">
+                <option value="mic">Обычный</option>
+                <option value="mic-voice-communication">Голосовой — шумо- и эхоподавление</option>
+                <option value="mic-unprocessed">Без обработки</option>
+                <option value="mic-camcorder">Видеозапись</option>
+                <option value="mic-voice-recognition">Распознавание речи</option>
+              </select></div>
+            <div class="line"><span class="label" style="width:90px">Каналы</span>
+              <div class="seg" data-bind="mic.mono" data-type="bool">
+                <button data-v="false">Стерео</button><button data-v="true">Моно</button>
+              </div></div>
+            <div class="line" style="margin-bottom:6px"><span class="label" style="width:90px">Задержка</span>
+              <div class="seg" data-bind="mic.buffer" data-type="int">
+                <button data-v="20">20 мс</button><button data-v="40">40 мс</button><button data-v="80">80 мс</button><button data-v="150">150 мс</button>
+              </div></div>
+            <div class="faint">Меньше задержка — выше риск щелчков. Android 11+.</div>
+          </div>
+          <div class="card">
+            <div class="section">Громкость</div>
+            <div class="slider">
+              <div class="row"><i class="ic hint">&#xE995;</i><span>Усиление</span><div class="grow"></div><span class="hint" data-out="mic.gain">100 %</span></div>
+              <input type="range" min="0" max="400" step="5" data-bind="mic.gain" data-unit=" %">
+            </div>
+            <div class="row presets" id="micGainPresets">
+              <button class="btn small" data-gain="50">50 %</button><button class="btn small" data-gain="100">100 %</button>
+              <button class="btn small" data-gain="200">200 %</button><button class="btn small" data-gain="300">300 %</button>
+            </div>
+            <label class="switch"><i class="ic">&#xE74F;</i><span class="text">Без звука</span><input type="checkbox" data-bind="mic.mute"><i class="knob"></i></label>
+            <label class="switch" title="Мягко ограничивает пики вместо хрипа"><i class="ic">&#xE945;</i><span class="text">Ограничитель</span><input type="checkbox" data-bind="mic.limiter"><i class="knob"></i></label>
+          </div>
+          <div class="card grow-card">
+            <div class="section">Где выбрать</div>
+            <div class="steps">
+              <div class="step"><b><i class="ic">&#xE720;</i></b><div><div>Discord</div><div class="hint">Настройки → Голос и видео → Устройство ввода</div></div></div>
+              <div class="step"><b><i class="ic">&#xE714;</i></b><div><div>Zoom, Teams, Telegram</div><div class="hint">Настройки звука → Микрофон</div></div></div>
+              <div class="step"><b><i class="ic">&#xE7C8;</i></b><div><div>OBS</div><div class="hint">Источники → Захват входного аудиопотока</div></div></div>
+              <div class="step"><b><i class="ic">&#xE7F4;</i></b><div><div>Система</div><div class="hint" id="micSysHint">Параметры → Звук → Ввод</div></div></div>
+            </div>
           </div>
         </div>
       </div>
@@ -221,8 +371,9 @@
           <div class="row"><span class="faint" id="appCount"></span><div class="grow"></div><span class="faint">Перетащите APK в окно</span></div>
         </div>
         <div class="card panel">
-          <div id="appNone" class="empty" style="flex:1"><span class="hint">Выберите приложение</span></div>
+          <div id="appNone" class="empty" style="flex:1"><i class="ic">&#xE7B8;</i><span class="hint">Выберите приложение</span><span class="faint">Ctrl и Shift — несколько</span></div>
           <div id="appDetails" style="display:none">
+            <div class="app-badge"><i class="ic">&#xE7B8;</i></div>
             <div class="big" id="appName" style="word-break:break-all;user-select:text"></div>
             <div class="hint" id="appMeta" style="white-space:pre-line;margin-top:6px;user-select:text"></div>
             <div class="actions-v">
@@ -285,13 +436,13 @@
               <button class="btn" data-key="play" title="Пауза / Играть"><i class="ic">&#xE768;</i></button>
             </div>
           </div>
-          <div class="card">
+          <div class="card grow-card">
             <div class="section">Перезагрузка</div>
-            <div class="row">
-              <button class="btn grow" data-reboot="" data-name="Система"><i class="ic">&#xE777;</i>Система</button>
-              <button class="btn grow" data-reboot="recovery" data-name="Recovery">Recovery</button>
-              <button class="btn grow" data-reboot="bootloader" data-name="Fastboot">Fastboot</button>
-              <button class="btn danger icon" data-reboot="off" data-name="Выключение" title="Выключить"><i class="ic">&#xE7E8;</i></button>
+            <div class="reboot-grid">
+              <button class="btn" data-reboot="" data-name="Система"><i class="ic">&#xE777;</i>Система</button>
+              <button class="btn" data-reboot="recovery" data-name="Recovery"><i class="ic">&#xE90F;</i>Recovery</button>
+              <button class="btn" data-reboot="bootloader" data-name="Fastboot"><i class="ic">&#xE88E;</i>Fastboot</button>
+              <button class="btn danger" data-reboot="off" data-name="Выключение"><i class="ic">&#xE7E8;</i>Выключить</button>
             </div>
           </div>
         </div>
@@ -302,11 +453,13 @@
             <div class="row">
               <button class="btn" id="sendType"><i class="ic">&#xE765;</i>Ввести</button>
               <button class="btn" id="sendUrl"><i class="ic">&#xE71B;</i>Открыть</button>
+              <div class="grow"></div>
+              <span class="faint">«Ввести» печатает в активное поле, «Открыть» — ссылка в браузере</span>
             </div>
-            <div class="faint" style="margin-top:10px">«Ввести» печатает в активное поле, «Открыть» — ссылка в браузере</div>
           </div>
-          <div class="card">
+          <div class="card grow-card shell-card">
             <div class="row" style="margin-bottom:12px"><div class="section" style="margin:0">Shell</div><div class="grow"></div>
+              <div class="chips" id="shellQuick"></div>
               <button class="btn ghost icon" id="shellClear" title="Очистить"><i class="ic">&#xE894;</i></button></div>
             <div class="console mono scroll" id="shellOut"><span class="faint">Вывод команд</span></div>
             <input type="text" id="shellIn" class="mono" placeholder="$ getprop ro.product.model" style="width:100%;margin-top:10px">
@@ -316,50 +469,95 @@
     </section>
 
     <!-- ═════════ SETTINGS ═════════ -->
-    <section class="page" id="page-settings" data-title="Опции">
-      <div class="stack" style="max-width:760px">
-        <div class="card">
-          <div class="row" style="margin-bottom:12px"><div class="section" style="margin:0">Инструменты</div><div class="grow"></div>
-            <button class="btn ghost small" id="toolsDir"><i class="ic">&#xE8B7;</i>Папка</button></div>
-          <div class="row">
-            <i class="ic" style="font-size:18px;color:var(--dim);width:28px">&#xE7B8;</i>
-            <div class="grow"><div><span class="big">Platform Tools</span> <span class="hint ok" id="adbVer"></span></div>
-              <div class="faint" id="adbPath"></div></div>
-            <button class="btn" id="adbUpdate"><i class="ic">&#xE896;</i><span>Обновить</span></button>
+    <section class="page" id="page-settings" data-title="Настройки">
+      <div class="cols" style="grid-template-columns: 1fr 360px">
+        <div class="stack">
+          <div class="card">
+            <div class="row" style="margin-bottom:12px"><div class="section" style="margin:0">Оформление</div><div class="grow"></div>
+              <button class="btn ghost small" id="themeRandom"><i class="ic">&#xE895;</i>Случайная</button></div>
+            <div class="sub"><i class="ic">&#xE771;</i>Дизайн <span class="faint">— меняет весь интерфейс</span></div>
+            <div class="theme-grid" id="styleGrid"></div>
+            <div class="sub"><i class="ic">&#xE790;</i>Цвета <span class="faint" id="paletteNote"></span></div>
+            <div class="palette-grid" id="paletteGrid"></div>
           </div>
-          <div class="divider"></div>
-          <div class="row">
-            <i class="ic" style="font-size:18px;color:var(--dim);width:28px">&#xE7B8;</i>
-            <div class="grow"><div><span class="big">scrcpy</span> <span class="hint ok" id="scrcpyVer"></span></div>
-              <div class="faint" id="scrcpyPath"></div></div>
-            <button class="btn" id="scrcpyUpdate"><i class="ic">&#xE896;</i><span>Обновить</span></button>
-          </div>
-          <div class="faint" id="toolsNote" style="margin-top:12px">Встроены в программу и распаковываются при первом запуске. «Обновить» скачивает последние версии.</div>
-        </div>
-        <div class="card">
-          <div class="section">Сохранение</div>
-          <div class="row">
-            <div class="grow"><div>Скриншоты, записи, APK, файлы</div><div class="hint" id="saveDir"></div></div>
-            <button class="btn" id="saveDirPick">Изменить</button>
-            <button class="btn icon" id="saveDirOpen" title="Открыть"><i class="ic">&#xE8B7;</i></button>
+          <div class="card grow-card">
+            <div class="section">Интерфейс</div>
+            <div class="line"><span class="label">Масштаб</span>
+              <div class="seg" data-bind="ui.scale" data-type="int">
+                <button data-v="90">90 %</button><button data-v="100">100 %</button><button data-v="110">110 %</button><button data-v="125">125 %</button>
+              </div></div>
+            <div class="line"><span class="label">Акцент</span>
+              <div class="accent-row" id="accentRow"></div></div>
+            <label class="switch"><i class="ic">&#xE945;</i><span class="text">Анимации</span><input type="checkbox" data-bind="ui.anim"><i class="knob"></i></label>
           </div>
         </div>
-        <div class="card">
-          <div class="section">Общее</div>
-          <div class="line"><span class="label no-i18n">Язык · Language</span>
-            <div class="seg no-i18n" data-bind="lang">
-              <button data-v="ru">Русский</button><button data-v="en">English</button>
-            </div></div>
-          <label class="switch" title="Проверять подключения каждые 2.5 с"><i class="ic">&#xE72C;</i><span class="text">Автопоиск устройств</span><input type="checkbox" data-bind="auto_refresh"><i class="knob"></i></label>
-        </div>
-        <div class="card row" style="gap:14px">
-          <i class="ic" style="font-size:26px;color:var(--accent)">&#xE8EA;</i>
-          <div><div class="big">Android Tools</div><div class="hint" id="aboutVer">Tauri · adb · scrcpy</div></div>
+        <div class="stack">
+          <div class="card">
+            <div class="section"><span class="no-i18n">Язык · Language</span></div>
+            <div class="lang-tiles no-i18n" id="langTiles">
+              <button data-lang="ru"><b>RU</b><span>Русский</span></button>
+              <button data-lang="en"><b>EN</b><span>English</span></button>
+            </div>
+          </div>
+          <div class="card">
+            <div class="row" style="margin-bottom:12px"><div class="section" style="margin:0">Обновления</div><div class="grow"></div>
+              <span class="hint mono" id="updCurrent"></span></div>
+            <div class="row">
+              <i class="ic" style="font-size:18px;color:var(--dim);width:28px">&#xE895;</i>
+              <div class="grow"><div id="updTitle">Проверка не выполнялась</div><div class="faint" id="updSub"></div></div>
+              <button class="btn" id="updCheck"><i class="ic">&#xE72C;</i><span>Проверить</span></button>
+            </div>
+            <button class="btn primary block" id="updInstall" style="display:none;margin-top:12px"><i class="ic">&#xE896;</i><span>Установить</span></button>
+            <label class="switch" style="margin-top:6px"><span class="text">Проверять при запуске</span><input type="checkbox" data-bind="updates.auto"><i class="knob"></i></label>
+          </div>
+          <div class="card">
+            <div class="section">Общее</div>
+            <label class="switch" title="Проверять подключения каждые 2.5 с"><i class="ic">&#xE72C;</i><span class="text">Автопоиск устройств</span><input type="checkbox" data-bind="auto_refresh"><i class="knob"></i></label>
+            <div class="divider"></div>
+            <div class="row">
+              <div class="grow"><div>Скриншоты, записи, APK, файлы</div><div class="hint" id="saveDir"></div></div>
+              <button class="btn small" id="saveDirPick">Изменить</button>
+              <button class="btn small icon" id="saveDirOpen" title="Открыть"><i class="ic">&#xE8B7;</i></button>
+            </div>
+          </div>
+          <div class="card">
+            <div class="row" style="margin-bottom:12px"><div class="section" style="margin:0">Инструменты</div><div class="grow"></div>
+              <button class="btn ghost small" id="toolsDir"><i class="ic">&#xE8B7;</i>Папка</button></div>
+            <div class="row">
+              <i class="ic" style="font-size:18px;color:var(--dim);width:28px">&#xE7B8;</i>
+              <div class="grow"><div><span class="big">Platform Tools</span> <span class="hint ok" id="adbVer"></span></div>
+                <div class="faint" id="adbPath"></div></div>
+              <button class="btn small" id="adbUpdate"><i class="ic">&#xE896;</i><span>Обновить</span></button>
+            </div>
+            <div class="divider"></div>
+            <div class="row">
+              <i class="ic" style="font-size:18px;color:var(--dim);width:28px">&#xE7B8;</i>
+              <div class="grow"><div><span class="big">scrcpy</span> <span class="hint ok" id="scrcpyVer"></span></div>
+                <div class="faint" id="scrcpyPath"></div></div>
+              <button class="btn small" id="scrcpyUpdate"><i class="ic">&#xE896;</i><span>Обновить</span></button>
+            </div>
+            <div class="faint" id="toolsNote" style="margin-top:12px">Встроены в программу и распаковываются при первом запуске. «Обновить» скачивает последние версии.</div>
+          </div>
+          <div class="card grow-card about">
+            <i class="ic" style="font-size:30px;color:var(--accent)">&#xE8EA;</i>
+            <div class="grow"><div class="big">Android Tools</div><div class="hint" id="aboutVer">Tauri · adb · scrcpy</div></div>
+            <button class="btn ghost small" id="aboutGithub"><i class="ic">&#xE8A7;</i>GitHub</button>
+          </div>
         </div>
       </div>
     </section>
 
     <div class="drop" id="drop">Отпустите файлы</div>
+
+    <footer class="statusbar">
+      <span class="sb-item" id="sbDevice"><span class="dot"></span><span class="name">Нет устройства</span></span>
+      <span class="sb-item" id="sbBattery"></span>
+      <div class="grow"></div>
+      <button class="sb-chip" data-page="screen" id="sbScreen"><i class="ic">&#xE7F4;</i>Экран</button>
+      <button class="sb-chip" data-page="camera" id="sbCamera"><i class="ic">&#xE722;</i>Камера</button>
+      <button class="sb-chip" data-page="mic" id="sbMic"><i class="ic">&#xE720;</i>Микрофон</button>
+      <span class="sb-item faint" id="sbTheme"></span>
+    </footer>
   </main>
 </div>
 
@@ -378,6 +576,7 @@
 </div>
 
 <script src="i18n.js"></script>
+<script src="themes.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

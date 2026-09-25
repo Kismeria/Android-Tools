@@ -32,7 +32,7 @@ fb.setupHorizontalHeader(ascent=ASC, descent=DESC)
 fb.setupNameTable({"familyName": "AT Icons", "styleName": "Regular"})
 fb.setupOS2(sTypoAscender=ASC, sTypoDescender=DESC, usWinAscent=ASC, usWinDescent=-DESC)
 fb.setupPost()
-pass
+
 fb.font.flavor = "woff2"
 fb.save("../ui/fonts/at-icons.woff2")
-print(len(cmap), "glyphs", os.path.getsize("at-icons.woff2"), "bytes")
+print(len(cmap), "glyphs", os.path.getsize("../ui/fonts/at-icons.woff2"), "bytes")

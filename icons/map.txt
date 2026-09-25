@@ -53,3 +53,15 @@ E995 speaker_2
 EB9F image
 F012 folder_zip
 F140 prohibited
+E720 mic
+E790 color
+E774 globe
+E895 arrow_sync
+E8A7 open
+E7F6 headphones
+E71C filter
+E916 timer
+E71E zoom_in
+E945 flash
+E9D9 pulse
+E771 paint_brush

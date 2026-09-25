@@ -44,9 +44,14 @@ pub fn handle_cli(args: &[String]) -> Option<i32> {
         "--camera-install-dshow" => super::dshow::install(),
         _ => return None,
     };
+    save_result(&result);
+    Some(if result.is_ok() { 0 } else { 1 })
+}
+
+/// Hands the elevated process's error text to `run_elevated` in the normal process.
+pub fn save_result(result: &Res<()>) {
     let _ = fs::create_dir_all(camera_dir());
     let _ = fs::write(log_path(), result.as_ref().err().cloned().unwrap_or_default());
-    Some(if result.is_ok() { 0 } else { 1 })
 }
 
 fn install() -> Res<()> {

@@ -1,6 +1,6 @@
 [package]
 name = "android-tools"
-version = "2.2.1"
+version = "2.3.0"
 edition = "2021"
 
 [build-dependencies]
@@ -23,8 +23,10 @@ png = "0.17"
 [target.'cfg(windows)'.dependencies.windows]
 version = "0.61"
 features = [
+  "Win32_Devices_FunctionDiscovery",
   "Win32_Foundation",
   "Win32_Graphics_Dwm",
+  "Win32_Media_Audio",
   "Win32_Media_MediaFoundation",
   "Win32_Security",
   "Win32_Security_Authorization",
@@ -38,6 +40,7 @@ features = [
   "Win32_System_Threading",
   "Win32_System_Variant",
   "Win32_UI_Shell",
+  "Win32_UI_Shell_PropertiesSystem",
   "Win32_UI_WindowsAndMessaging",
 ]
 

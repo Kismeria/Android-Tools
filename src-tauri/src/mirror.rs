@@ -29,6 +29,14 @@ pub struct MirrorSettings {
     #[serde(default)]
     pub uhid_mouse: bool,
     pub record: bool,
+    /// output (the whole phone sound) or mic.
+    #[serde(default)]
+    pub audio_source: String,
+    /// Lock the video orientation: 0, 90, 180, 270; empty follows the phone.
+    #[serde(default)]
+    pub orientation: String,
+    #[serde(default)]
+    pub power_off_on_close: bool,
 }
 
 pub fn build_args(serial: &str, s: &MirrorSettings, title: &str, record_dir: &str) -> Vec<String> {
@@ -45,6 +53,11 @@ pub fn build_args(serial: &str, s: &MirrorSettings, title: &str, record_dir: &st
     }
     if !s.audio {
         a.push("--no-audio".into());
+    } else if s.audio_source == "mic" {
+        a.push("--audio-source=mic".into());
+    }
+    if !s.orientation.is_empty() {
+        a.push(format!("--capture-orientation=@{}", s.orientation));
     }
     if s.view_only {
         a.push("--no-control".into());
@@ -60,6 +73,9 @@ pub fn build_args(serial: &str, s: &MirrorSettings, title: &str, record_dir: &st
         }
         if s.uhid_mouse {
             a.push("--mouse=uhid".into());
+        }
+        if s.power_off_on_close {
+            a.push("--power-off-on-close".into());
         }
     }
     for (on, flag) in [

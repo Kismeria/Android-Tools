@@ -6,6 +6,7 @@ use serde_json::{json, Value};
 use tauri::{AppHandle, State};
 
 use crate::camera::{self, Camera};
+use crate::mic::{self, Mic};
 use crate::mirror::{self, Mirror, MirrorSettings};
 use crate::util::{err, hidden, Res};
 use crate::{adb, tools};
@@ -14,6 +15,7 @@ use crate::{adb, tools};
 pub struct AppState {
     pub mirror: Mutex<Mirror>,
     pub camera: Mutex<Option<Camera>>,
+    pub mic: Mutex<Option<Mic>>,
 }
 
 impl AppState {
@@ -21,6 +23,9 @@ impl AppState {
         self.mirror.lock().unwrap().stop();
         if let Some(cam) = self.camera.lock().unwrap().take() {
             cam.stop();
+        }
+        if let Some(mic) = self.mic.lock().unwrap().take() {
+            mic.stop();
         }
     }
 }
@@ -51,6 +56,28 @@ pub fn set_language(lang: String) {
     crate::util::set_english(lang == "en");
 }
 
+/// Window caption colors follow the UI theme (`#rrggbb`).
+#[tauri::command]
+pub fn set_window_theme(window: tauri::WebviewWindow, dark: bool, caption: String, border: String, text: String) {
+    crate::paint_titlebar(&window, dark, &caption, &border, &text);
+}
+
+/// Interface scale (browser-style zoom of the whole page).
+#[tauri::command]
+pub fn set_zoom(window: tauri::WebviewWindow, scale: f64) {
+    let _ = window.set_zoom(scale.clamp(0.5, 2.0));
+}
+
+#[tauri::command]
+pub async fn update_check() -> Res<crate::update::UpdateInfo> {
+    blocking(crate::update::check).await
+}
+
+#[tauri::command]
+pub async fn update_apply(app: AppHandle, url: String) -> Res<()> {
+    blocking(move || crate::update::apply(&app, &url)).await
+}
+
 #[tauri::command]
 pub async fn tools_info() -> Res<tools::ToolsInfo> {
     blocking(|| Ok(tools::info())).await
@@ -74,6 +101,22 @@ pub async fn open_path(path: String) -> Res<()> {
         }
         let opener = if cfg!(windows) { "explorer" } else { "xdg-open" };
         hidden(opener).arg(&p).spawn().map_err(err)?;
+        Ok(())
+    })
+    .await
+}
+
+/// Opens a web link in the PC browser.
+#[tauri::command]
+pub async fn open_external(url: String) -> Res<()> {
+    if !url.starts_with("https://") {
+        return Err("Неверная ссылка".into());
+    }
+    blocking(move || {
+        #[cfg(windows)]
+        hidden("cmd").args(["/c", "start", "", &url]).spawn().map_err(err)?;
+        #[cfg(not(windows))]
+        hidden("xdg-open").arg(&url).spawn().map_err(err)?;
         Ok(())
     })
     .await
@@ -213,6 +256,73 @@ pub async fn camera_remove(state: State<'_, AppState>) -> Res<()> {
             cam.stop();
         }
         camera::install::run_elevated("--camera-remove")
+    })
+    .await
+}
+
+// ── microphone ──
+
+#[tauri::command]
+pub async fn mic_start(app: AppHandle, state: State<'_, AppState>, settings: mic::Settings) -> Res<()> {
+    let old = state.mic.lock().unwrap().take();
+    if let Some(old) = old {
+        blocking(move || {
+            old.stop();
+            Ok(())
+        })
+        .await?;
+    }
+    *state.mic.lock().unwrap() = Some(Mic::start(app, settings));
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn mic_stop(state: State<'_, AppState>) -> Res<()> {
+    let mic = state.mic.lock().unwrap().take();
+    if let Some(mic) = mic {
+        blocking(move || {
+            mic.stop();
+            Ok(())
+        })
+        .await?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub fn mic_live(state: State<'_, AppState>, live: mic::Live) {
+    if let Some(mic) = state.mic.lock().unwrap().as_ref() {
+        mic.update_live(live);
+    }
+}
+
+#[tauri::command]
+pub fn mic_running(state: State<'_, AppState>) -> bool {
+    let mut g = state.mic.lock().unwrap();
+    if g.as_ref().map(|m| m.finished()).unwrap_or(false) {
+        *g = None;
+    }
+    g.is_some()
+}
+
+#[tauri::command]
+pub async fn mic_status() -> Res<mic::sys::MicStatus> {
+    blocking(|| Ok(mic::sys::status())).await
+}
+
+#[tauri::command]
+pub async fn mic_install() -> Res<()> {
+    blocking(mic::sys::install).await
+}
+
+#[tauri::command]
+pub async fn mic_remove(state: State<'_, AppState>) -> Res<()> {
+    let running = state.mic.lock().unwrap().take();
+    blocking(move || {
+        if let Some(m) = running {
+            m.stop();
+        }
+        mic::sys::remove()
     })
     .await
 }

@@ -1,9 +1,9 @@
 # Android Tools
 
-Управление Android-телефоном с ПК: экран через scrcpy, приложения, файлы, телефон как веб-камера.
+Управление Android-телефоном с ПК: экран через scrcpy, приложения, файлы, телефон как веб-камера и микрофон.
 Windows и Arch Linux. Интерфейс на русском и английском — язык выбирается при первом запуске.
 
-*Control an Android phone from your PC: scrcpy screen, apps, files, phone as a webcam. Windows and Arch Linux, Russian and English UI — [English below](#english).*
+*Control an Android phone from your PC: scrcpy screen, apps, files, phone as a webcam and microphone. Windows and Arch Linux, Russian and English UI — [English below](#english).*
 
 ## Установка в одну команду
 
@@ -35,9 +35,11 @@ sudo pacman -U https://github.com/Kismeria/Android-Tools/releases/latest/downloa
 | Устройства | список, батарея и память, Wi‑Fi: подключение, сопряжение по коду, поиск в сети, переход USB → Wi‑Fi |
 | Экран | окно scrcpy, профили, FPS, кодек, битрейт, звук, запись, HID‑мышь и HID‑клавиатура |
 | Камера | телефон как веб-камера «Android Tools Camera» |
+| Микрофон | телефон как микрофон «Android Tools Microphone»: усиление, шумовой порог, ограничитель, моно, прослушивание на ПК, индикатор уровня |
 | Приложения | установка `.apk/.apks/.xapk/.apkm` (и перетаскиванием), удаление, запуск, остановка, очистка, отключение, сохранение APK |
 | Файлы | обзор памяти, скачивание и загрузка, папки, переименование, удаление |
 | Утилиты | скриншот в файл и буфер, кнопки телефона, перезагрузка, ввод текста, ссылки, shell |
+| Настройки | 11 дизайнов (Windows 95, Windows XP, Aqua, Terminal, Brutal, Glass, Material You, Synthwave, Game Boy, Paper, Modern) и 19 палитр в духе Omarchy, акцентный цвет, масштаб, язык, обновление программы |
 
 ### Камера
 | Система | Как работает | Где видна |
@@ -48,6 +50,18 @@ sudo pacman -U https://github.com/Kismeria/Android-Tools/releases/latest/downloa
 
 Установка камеры — раздел «Камера» → «Установить» (один раз, нужны права администратора).
 Прямой доступ к камере телефона — Android 12+; на старых версиях работает режим «Совм.» через приложение камеры.
+
+### Микрофон
+| Система | Как работает |
+|---|---|
+| Windows 10/11 | драйвер [VB-CABLE](https://vb-audio.com/Cable/) (бесплатный, подписан Microsoft); «Установить» скачивает его с vb-audio.com и переименовывает устройство в «Android Tools Microphone» |
+| Arch Linux | источник PipeWire/PulseAudio (`pactl`, пакет `libpulse`), без прав администратора |
+
+Звук берётся со встроенного микрофона телефона (Android 11+). Режимы: обычный, голосовой (шумо- и эхоподавление телефона), без обработки, видеозапись, распознавание речи.
+В Discord, Zoom, OBS и других программах выберите устройство ввода «Android Tools Microphone».
+
+### Обновления
+«Настройки → Обновления»: на Windows программа скачивает новый exe и перезапускается, на Arch Linux ставит новый пакет через `pacman -U` (спросит пароль).
 
 ### Если не работают мышь и клавиатура
 Xiaomi/Redmi/POCO: «Для разработчиков → Отладка по USB (настройки безопасности)».
@@ -76,6 +90,14 @@ Enable Developer options (tap "Build number" 7 times), turn on USB debugging, co
 Windows 11 — Media Foundation system camera; Windows 10 — DirectShow camera; Linux — `v4l2loopback`.
 Install it once from the Camera tab. Direct camera access requires Android 12+; older phones use "Compat" mode through the camera app.
 
+### Microphone
+Windows uses the signed [VB-CABLE](https://vb-audio.com/Cable/) driver, downloaded from vb-audio.com on install and renamed to "Android Tools Microphone".
+Linux uses a PipeWire/PulseAudio pipe source (`pactl` from `libpulse`), no root needed. Requires Android 11+.
+
+### Themes and updates
+Settings has 11 designs that restyle the whole interface (Windows 95, Windows XP, Aqua, Terminal, Brutal, Glass, Material You, Synthwave, Game Boy, Paper, Modern) and 19 Omarchy-style palettes.
+Settings → Updates installs new releases: the exe replaces itself on Windows, `pacman -U` on Arch Linux.
+
 ### Mouse and keyboard do not work
 Xiaomi/Redmi/POCO: Developer options → "USB debugging (Security settings)".
 OPPO/Realme/OnePlus: Developer options → "Disable permission monitoring".
@@ -96,5 +118,6 @@ Arch Linux: `packaging/arch/PKGBUILD` (`makepkg -si`); GitHub Actions builds the
 MIT — [LICENSE](LICENSE).
 - [scrcpy](https://github.com/Genymobile/scrcpy) — Apache License 2.0.
 - [softcam](https://github.com/tshino/softcam) — MIT (Windows 10 camera).
+- [VB-CABLE](https://vb-audio.com/Cable/) — donationware by VB-Audio, not bundled: downloaded from the vendor on install (Windows microphone).
 - [Fluent UI System Icons](https://github.com/microsoft/fluentui-system-icons) — MIT (AT Icons font).
 - adb — [Android SDK Platform Tools](https://developer.android.com/tools/releases/platform-tools).

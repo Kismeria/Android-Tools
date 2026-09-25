@@ -17,12 +17,19 @@ const DEFAULTS = {
   screen: {
     preset: "balance", max_size: 1600, fps: 60, bitrate: 8, codec: "h264", audio: true, turn_off: false,
     stay_awake: true, touches: false, on_top: false, borderless: false, fullscreen: false, view_only: false,
-    uhid: false, uhid_mouse: false, record: false,
+    uhid: false, uhid_mouse: false, record: false, audio_source: "output", orientation: "", power_off_on_close: false,
   },
   camera: {
     facing: "front", camera_id: "", quality: 720, fps: 30, bitrate: 6, rotation: 0, mirror: false, fill: false,
     preview: true, torch: false, mode: "auto",
   },
+  mic: {
+    source: "mic", buffer: 40, gain: 100, mute: false, gate: false, gate_db: -50, limiter: true, mono: false,
+    monitor: false, monitor_volume: 80,
+  },
+  theme: { style: "modern", palette: "oled", accent: "" },
+  ui: { scale: 100, anim: true },
+  updates: { auto: true },
   apps: { filter: "user" },
   files: { path: "/sdcard/" },
   utils: { clipboard: true },
@@ -149,7 +156,7 @@ document.addEventListener("contextmenu", (e) => { if (!e.target.closest("input, 
 const segHandlers = new Map();
 function bindSeg(seg, onChange) {
   const path = seg.dataset.bind;
-  const isInt = seg.dataset.type === "int";
+  const type = seg.dataset.type;
   const paint = () => {
     const v = String(path ? getPath(path) : seg.dataset.value);
     for (const b of seg.querySelectorAll("button")) b.classList.toggle("on", b.dataset.v === v);
@@ -157,7 +164,7 @@ function bindSeg(seg, onChange) {
   seg.addEventListener("click", (e) => {
     const b = e.target.closest("button");
     if (!b) return;
-    const v = isInt ? parseInt(b.dataset.v, 10) : b.dataset.v;
+    const v = type === "int" ? parseInt(b.dataset.v, 10) : type === "bool" ? b.dataset.v === "true" : b.dataset.v;
     if (path) setPath(path, v); else seg.dataset.value = v;
     paint();
     onChange?.(v, path);
@@ -327,6 +334,7 @@ registerPage("devices", {
     };
     $("#pairCode").onkeydown = (e) => e.key === "Enter" && pair();
     $("#wifiPair").onclick = pair;
+    for (const t of $$("[data-quick]", el)) t.onclick = () => this.quick(t.dataset.quick);
     $("#wifiScan").onclick = async () => {
       const found = await call("wifi_scan");
       if (!found.length) return toast("В сети ничего не найдено");
@@ -337,6 +345,38 @@ registerPage("devices", {
     this.render();
   },
 
+  quick(kind) {
+    if (kind === "shot") return pages.utils.shot();
+    if (kind === "files" || kind === "apps") return go(kind);
+    if (!requireDevice()) return;
+    go(kind);
+    if (!pages[kind].running) pages[kind].toggle?.() ?? pages[kind].start?.();
+  },
+
+  // Details of the selected device, next to the list.
+  panel() {
+    const d = device();
+    const info = (d && S.info[d.serial]) || {};
+    $("#dpName").textContent = d ? devName() : "Нет устройства";
+    $("#dpSub").textContent = !d ? "Подключите телефон"
+      : d.state === "unauthorized" ? "Подтвердите отладку на экране телефона"
+      : [info.brand, info.android && `Android ${info.android}`].filter(Boolean).join(" · ") || d.serial;
+    const bat = info.battery ?? null;
+    $("#dpBattery").style.width = bat == null ? "0" : `${bat}%`;
+    $("#dpBattery").style.background = bat != null && bat <= 20 ? "var(--danger)" : "";
+    $("#dpBatteryT").textContent = bat == null ? "—" : `${bat}%${info.charging ? " ⚡" : ""}`;
+    const used = info.storage_total ? info.storage_used / info.storage_total : null;
+    $("#dpStorage").style.width = used == null ? "0" : `${Math.round(used * 100)}%`;
+    $("#dpStorage").style.background = used != null && used > 0.9 ? "var(--danger)" : "";
+    $("#dpStorageT").textContent = used == null ? "—" : `${Math.round(used * 100)}%`;
+    const rows = [
+      ["Модель", info.model], ["Android", info.android && `${info.android} (SDK ${info.sdk})`], ["Экран", info.resolution],
+      ["Свободно", info.storage_total && humanSize(info.storage_total - info.storage_used)], ["IP", info.ip],
+      ["Подключение", d && (d.wireless ? "Wi‑Fi" : "USB")], ["Серийный", d?.serial],
+    ];
+    $("#dpKv").innerHTML = rows.map(([k, v]) => `<span>${k}</span><span title="${esc(v || "")}">${esc(v || "—")}</span>`).join("");
+  },
+
   refresh() {
     S.signature = null;
     poll(true);
@@ -344,6 +384,7 @@ registerPage("devices", {
   },
 
   render() {
+    this.panel();
     const list = $("#deviceList");
     $("#deviceEmpty").style.display = S.devices.length ? "none" : "";
     list.innerHTML = "";
@@ -502,6 +543,7 @@ registerPage("screen", {
     st.textContent = on ? "● Идёт трансляция" : "Остановлено";
     st.className = on ? "ok" : "hint";
     st.style.fontSize = "12px";
+    paintStatus();
   },
 });
 
@@ -669,6 +711,202 @@ registerPage("camera", {
       $("#camDot").classList.remove("on");
       $("#camFps").textContent = "";
     }
+    paintStatus();
+  },
+});
+
+/* ═════════════ MICROPHONE ═════════════ */
+
+const dbOf = (v) => (v > 0 ? 20 * Math.log10(v) : -Infinity);
+// Meter scale: −60 dB … 0 dB.
+const dbPos = (db) => Math.max(0, Math.min(1, (db + 60) / 60));
+
+registerPage("mic", {
+  running: false,
+  history: new Array(160).fill(0),
+  peak: 0,
+  colors: null,
+  init(el) {
+    let timer = null;
+    const liveUpdate = () => this.running && call("mic_live", { live: this.live() }, { busy: false, quiet: true });
+    bindAll(el, (v, path) => {
+      if (path.startsWith("mic.gate")) this.paintGate();
+      if (!this.running) return;
+      if (path === "mic.buffer") {
+        clearTimeout(timer);
+        timer = setTimeout(() => this.start(), 500);
+      } else {
+        liveUpdate();
+      }
+    });
+    // Sliders act while dragging, not only on release.
+    for (const r of $$("input[type=range][data-bind^='mic.']", el)) {
+      r.addEventListener("input", () => {
+        const key = r.dataset.bind.split(".")[1];
+        cfg.mic[key] = parseInt(r.value, 10);
+        if (key === "gate_db") this.paintGate();
+        liveUpdate();
+      });
+    }
+    const src = $("#micSource");
+    src.value = cfg.mic.source;
+    src.onchange = () => {
+      cfg.mic.source = src.value;
+      save();
+      if (this.running) this.start();
+    };
+    $("#micGainPresets").onclick = (e) => {
+      const b = e.target.closest("[data-gain]");
+      if (!b) return;
+      cfg.mic.gain = parseInt(b.dataset.gain, 10);
+      save();
+      repaint(el);
+      liveUpdate();
+    };
+    $("#micStart").onclick = () => (this.running ? this.stop() : this.start());
+    $("#vmicInstall").onclick = () => this.install();
+    $("#vmicRemove").onclick = () => this.remove();
+
+    T.event.listen("mic-level", (e) => this.running && this.level(e.payload));
+    T.event.listen("mic-status", (e) => {
+      const s = e.payload;
+      if (s.state === "stopped") return this.setRunning(false);
+      $("#micStatus").textContent = s.state === "running"
+        ? (s.device ? "Трансляция → Android Tools Microphone" : "Только прослушивание — микрофон не установлен")
+        : s.text;
+      $("#micDot").classList.toggle("on", s.state === "running");
+    });
+    T.event.listen("mic-error", (e) => toast(e.payload, "err"));
+    new ResizeObserver(() => this.drawWave()).observe($("#micWave"));
+
+    this.paintGate();
+    this.checkVmic();
+    this.reset();
+  },
+  show() { this.checkVmic(); },
+  live() {
+    const m = cfg.mic;
+    return {
+      gain: m.gain, mute: m.mute, gate: m.gate, gate_db: m.gate_db, limiter: m.limiter, mono: m.mono,
+      monitor: m.monitor, monitor_volume: m.monitor_volume,
+    };
+  },
+  paintGate() {
+    const g = $("#micVuGate");
+    g.classList.toggle("show", cfg.mic.gate);
+    g.style.left = `${dbPos(cfg.mic.gate_db) * 100}%`;
+  },
+  level({ peak, rms, open }) {
+    const db = dbOf(rms);
+    const pos = dbPos(db);
+    $("#micDb").textContent = db > -90 ? `${db.toFixed(1)} дБ` : "−∞ дБ";
+    const vu = $("#micVu");
+    vu.style.setProperty("--vu-w", `${vu.clientWidth}px`);
+    $("#micVuFill").style.width = `${pos * 100}%`;
+    this.peak = Math.max(dbPos(dbOf(peak)), this.peak - 0.015);
+    $("#micVuPeak").style.left = `calc(${this.peak * 100}% - 3px)`;
+    $("#micOrb").style.setProperty("--lvl", (open ? pos : 0).toFixed(3));
+    this.history.push(open ? pos : -pos);
+    this.history.shift();
+    this.drawWave();
+  },
+  // Scrolling level history; moments muted by the gate are drawn dimmed.
+  drawWave() {
+    const cv = $("#micWave");
+    const dpr = window.devicePixelRatio || 1;
+    const w = Math.round(cv.clientWidth * dpr), h = Math.round(cv.clientHeight * dpr);
+    if (!w || !h) return;
+    if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
+    if (!this.colors) {
+      const css = getComputedStyle(cv);
+      this.colors = { on: css.getPropertyValue("--accent").trim() || "#3ddc84", off: css.getPropertyValue("--faint").trim() || "#444" };
+    }
+    const ctx = cv.getContext("2d");
+    ctx.clearRect(0, 0, w, h);
+    const n = this.history.length;
+    const step = w / n;
+    const bar = Math.max(1, step * 0.6);
+    for (let i = 0; i < n; i++) {
+      const v = this.history[i];
+      const bh = Math.max(dpr, Math.abs(v) * (h - 8 * dpr));
+      ctx.fillStyle = v >= 0 ? this.colors.on : this.colors.off;
+      ctx.fillRect(i * step, (h - bh) / 2, bar, bh);
+    }
+  },
+  reset() {
+    this.history.fill(0);
+    this.peak = 0;
+    $("#micDb").textContent = "−∞ дБ";
+    $("#micVuFill").style.width = "0";
+    $("#micVuPeak").style.left = "0";
+    $("#micOrb").style.setProperty("--lvl", 0);
+    this.drawWave();
+  },
+  async checkVmic() {
+    const st = await call("mic_status", {}, { busy: false, quiet: true }).catch(() => null);
+    if (!st) return;
+    this.vmic = st;
+    const pulse = st.kind === "pulse";
+    $("#vmicName").textContent = st.name || "Android Tools Microphone";
+    $("#vmicNote").textContent = pulse
+      ? "Linux: источник звука PipeWire/PulseAudio, права администратора не нужны. В программах выберите «Android Tools Microphone»."
+      : "Windows: используется бесплатный подписанный драйвер VB-CABLE от VB-Audio. Установка скачает его с vb-audio.com и попросит права администратора. В программах выберите «Android Tools Microphone».";
+    $("#micSysHint").textContent = pulse ? "Настройки звука → Вход (или pavucontrol)" : "Параметры → Система → Звук → Ввод";
+    const label = $("#vmicState");
+    if (!st.supported) label.innerHTML = `<span class="warn">Нужен пакет libpulse (pactl)</span>`;
+    else if (st.device) label.innerHTML = `<span class="ok">✓ Установлен</span>`;
+    else label.innerHTML = `<span class="warn">Не установлен</span>`;
+    $("#vmicInstall").style.display = st.device || !st.supported ? "none" : "";
+    $("#vmicRemove").style.display = st.device ? "" : "none";
+  },
+  async install() {
+    const pulse = this.vmic?.kind === "pulse";
+    const ok = await confirmBox("Установить микрофон?",
+      pulse
+        ? "В системе появится микрофон «Android Tools Microphone». Он сохранится после перезагрузки."
+        : "Будет скачан и установлен драйвер VB-CABLE (VB-Audio, бесплатно для личного использования). Windows попросит права администратора и может показать окно установки драйвера — нажмите «Установить».",
+      "Установить", "primary");
+    if (!ok) return;
+    toast("Установка микрофона…");
+    await call("mic_install");
+    toast("Android Tools Microphone установлен", "ok");
+    setTimeout(() => this.checkVmic(), 800);
+  },
+  async remove() {
+    if (!(await confirmBox("Удалить микрофон?", "Устройство «Android Tools Microphone» исчезнет из системы.", "Удалить"))) return;
+    await call("mic_remove");
+    this.setRunning(false);
+    toast("Микрофон удалён", "ok");
+    this.checkVmic();
+  },
+  async start() {
+    const serial = requireDevice();
+    if (!serial) return;
+    if (!S.info[serial]) await refreshInfo(serial);
+    const sdk = S.info[serial]?.sdk || 0;
+    if (sdk && sdk < 30) return toast("Микрофон телефона доступен с Android 11", "err");
+    this.setRunning(true);
+    $("#micStatus").textContent = "Подключение…";
+    await call("mic_start", {
+      settings: { serial, sdk, source: cfg.mic.source, buffer: cfg.mic.buffer, live: this.live() },
+    }).catch(() => this.setRunning(false));
+  },
+  async stop() {
+    this.setRunning(false);
+    await call("mic_stop", {}, { busy: false, quiet: true });
+  },
+  setRunning(on) {
+    this.running = on;
+    const b = $("#micStart");
+    b.className = `btn big block ${on ? "stop" : "primary"}`;
+    b.innerHTML = on ? `<i class="ic">&#xE71A;</i><span>Выключить</span>` : `<i class="ic">&#xE720;</i><span>Включить микрофон</span>`;
+    $("#micOrb").classList.toggle("on", on);
+    if (!on) {
+      $("#micStatus").textContent = "Выключено";
+      $("#micDot").classList.remove("on");
+      this.reset();
+    }
+    paintStatus();
   },
 });
 
@@ -1039,14 +1277,7 @@ registerPage("utils", {
   lastShot: null,
   init(el) {
     bindAll(el);
-    $("#shotTake").onclick = async () => {
-      const serial = requireDevice();
-      if (!serial) return;
-      const r = await call("screenshot", { serial, saveDir: cfg.save_dir, clipboard: cfg.utils.clipboard });
-      this.lastShot = r.path;
-      $("#shotThumb").innerHTML = `<img src="${r.data}" alt="">`;
-      toast("Скриншот сохранён" + (r.copied ? " и скопирован" : ""), "ok");
-    };
+    $("#shotTake").onclick = () => this.shot();
     $("#shotThumb").onclick = () => this.lastShot && call("open_path", { path: this.lastShot }, { busy: false });
     for (const b of $$("[data-key]", el)) {
       b.onclick = () => { const s = requireDevice(); if (s) call("key_event", { serial: s, key: b.dataset.key }, { busy: false }); };
@@ -1079,6 +1310,14 @@ registerPage("utils", {
 
     const out = $("#shellOut");
     const shell = $("#shellIn");
+    const quick = [["Модель", "getprop ro.product.model"], ["Батарея", "dumpsys battery"], ["Память", "df -h /data"], ["Процессы", "top -b -n 1 | head -20"]];
+    $("#shellQuick").innerHTML = quick.map(([n, c]) => `<button class="btn ghost small" data-cmd="${esc(c)}" title="${esc(c)}">${n}</button>`).join("");
+    $("#shellQuick").onclick = (e) => {
+      const b = e.target.closest("[data-cmd]");
+      if (!b) return;
+      shell.value = b.dataset.cmd;
+      shell.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter" }));
+    };
     $("#shellClear").onclick = () => (out.innerHTML = "");
     shell.onkeydown = async (e) => {
       if (e.key === "ArrowUp" && this.history.length) {
@@ -1100,15 +1339,89 @@ registerPage("utils", {
       }
     };
   },
+  async shot() {
+    const serial = requireDevice();
+    if (!serial) return;
+    const r = await call("screenshot", { serial, saveDir: cfg.save_dir, clipboard: cfg.utils.clipboard });
+    this.lastShot = r.path;
+    $("#shotThumb").innerHTML = `<img src="${r.data}" alt="">`;
+    toast("Скриншот сохранён" + (r.copied ? " и скопирован" : ""), "ok");
+  },
 });
 
 /* ═════════════ SETTINGS ═════════════ */
 
+const TP = `<div class="tp-side"><i></i><i class="on"></i><i></i></div><div class="tp-main"><div class="tp-title"></div>
+  <div class="tp-card"><div class="tp-line"></div><div class="tp-line short"></div><div class="tp-btn"></div></div></div>`;
+
+function setTheme(patch) {
+  Object.assign(cfg.theme, patch);
+  save();
+  applyTheme();
+}
+
+function applyTheme() {
+  Theme.apply(cfg.theme);
+  if (pages.mic) { pages.mic.colors = null; pages.mic.drawWave(); }
+  pages.settings?.paintThemes();
+  paintStatus();
+  const c = Theme.caption();
+  call("set_window_theme", { dark: c.dark, caption: c.caption, border: c.border, text: c.text }, { busy: false, quiet: true }).catch(() => {});
+}
+
+function applyUi() {
+  document.documentElement.dataset.anim = cfg.ui.anim ? "on" : "off";
+  call("set_zoom", { scale: cfg.ui.scale / 100 }, { busy: false, quiet: true }).catch(() => {});
+}
+
 registerPage("settings", {
   init(el) {
     bindAll(el, (v, path) => {
-      if (path === "lang") location.reload();
+      if (path.startsWith("ui.")) applyUi();
     });
+    for (const b of $$("#langTiles button")) b.classList.toggle("on", b.dataset.lang === cfg.lang);
+    $("#langTiles").onclick = (e) => {
+      const b = e.target.closest("[data-lang]");
+      if (!b || b.dataset.lang === cfg.lang) return;
+      cfg.lang = b.dataset.lang;
+      save();
+      location.reload();
+    };
+
+    $("#styleGrid").innerHTML = STYLES.map((s) => `
+      <button class="theme-card" data-style-id="${s.id}">
+        <div class="tp" data-style="${s.id}" data-palette="${s.fixed ? "none" : s.palette}">${TP}</div>
+        <div class="theme-name no-i18n"><span>${s.name}</span><span class="faint">${s.note}</span></div>
+      </button>`).join("");
+    $("#paletteGrid").innerHTML = PALETTES.map((p) => `
+      <button class="pal-card no-i18n" data-pal="${p.id}" data-palette="${p.id}">
+        <div class="pal-swatch"><i style="background:var(--bg)"></i><i style="background:var(--surface)"></i><i style="background:var(--accent)"></i><i style="background:var(--text)"></i></div>
+        <span>${p.name}</span></button>`).join("");
+    $("#styleGrid").onclick = (e) => {
+      const b = e.target.closest("[data-style-id]");
+      if (!b) return;
+      const s = Theme.style(b.dataset.styleId);
+      setTheme({ style: s.id, palette: s.fixed ? cfg.theme.palette : s.palette });
+    };
+    $("#paletteGrid").onclick = (e) => {
+      const b = e.target.closest("[data-pal]");
+      if (b) setTheme({ palette: b.dataset.pal });
+    };
+    $("#themeRandom").onclick = () => {
+      const pick = (a) => a[Math.floor(Math.random() * a.length)];
+      const s = pick(STYLES);
+      setTheme({ style: s.id, palette: s.fixed ? cfg.theme.palette : pick(PALETTES).id });
+    };
+    const accent = $("#accentRow");
+    accent.innerHTML = `<button class="auto" data-accent="" title="Как в теме"></button>`
+      + ACCENTS.map((c) => `<button data-accent="${c}" style="background:${c}"></button>`).join("")
+      + `<input type="color" id="accentPick" title="Свой цвет">`;
+    accent.onclick = (e) => {
+      const b = e.target.closest("[data-accent]");
+      if (b) setTheme({ accent: b.dataset.accent });
+    };
+    $("#accentPick").oninput = (e) => setTheme({ accent: e.target.value });
+
     $("#toolsDir").onclick = () => this.tools && call("open_path", { path: this.tools.bin_dir }, { busy: false });
     $("#saveDirOpen").onclick = () => call("open_path", { path: cfg.save_dir }, { busy: false });
     $("#saveDirPick").onclick = async () => {
@@ -1131,6 +1444,20 @@ registerPage("settings", {
     };
     $("#adbUpdate").onclick = () => update("adb", "#adbUpdate");
     $("#scrcpyUpdate").onclick = () => update("scrcpy", "#scrcpyUpdate");
+    $("#updCheck").onclick = () => this.checkUpdate(true);
+    $("#updInstall").onclick = () => this.installUpdate();
+    $("#aboutGithub").onclick = () => call("open_external", { url: "https://github.com/Kismeria/Android-Tools" }, { busy: false });
+    this.paintThemes();
+  },
+  paintThemes() {
+    const s = Theme.style(cfg.theme.style);
+    const palette = document.documentElement.dataset.palette;
+    for (const b of $$("#styleGrid [data-style-id]")) b.classList.toggle("on", b.dataset.styleId === s.id);
+    for (const b of $$("#paletteGrid [data-pal]")) b.classList.toggle("on", !s.fixed && b.dataset.pal === palette);
+    $("#paletteGrid").classList.toggle("locked", !!s.fixed);
+    $("#accentRow").classList.toggle("locked", !!s.fixed);
+    for (const b of $$("#accentRow [data-accent]")) b.classList.toggle("on", b.dataset.accent === (cfg.theme.accent || ""));
+    $("#paletteNote").textContent = s.fixed ? "— у этого дизайна свои цвета" : `— для дизайна «${s.name}»`;
   },
   async show() {
     this.paint();
@@ -1147,15 +1474,75 @@ registerPage("settings", {
       : "Встроены в программу и распаковываются при первом запуске. «Обновить» скачивает последние версии.";
   },
   paint() { $("#saveDir").textContent = shortPath(cfg.save_dir); },
+  async checkUpdate(manual) {
+    $("#updTitle").textContent = "Проверка…";
+    $("#updSub").textContent = "";
+    try {
+      const u = await call("update_check", {}, { busy: manual, quiet: !manual });
+      this.update = u;
+      $("#updCurrent").textContent = `v${u.current}`;
+      const install = $("#updInstall");
+      $("#updateDot").classList.toggle("show", u.newer);
+      if (u.newer) {
+        $("#updTitle").textContent = `Доступна версия ${u.latest}`;
+        $("#updSub").textContent = u.method === "manual" ? "Эта копия установлена не через pacman — обновите скриптом из README" : "";
+        install.style.display = u.method === "manual" || !u.asset ? "none" : "";
+        $("span", install).textContent = `Установить ${u.latest}`;
+      } else {
+        $("#updTitle").textContent = "Установлена последняя версия";
+        $("#updSub").textContent = `v${u.current}`;
+        install.style.display = "none";
+      }
+      return u;
+    } catch {
+      $("#updTitle").textContent = "Не удалось проверить";
+      $("#updSub").textContent = "Нет связи с GitHub";
+      return null;
+    }
+  },
+  async installUpdate() {
+    const u = this.update;
+    if (!u?.asset) return;
+    const how = u.method === "pacman"
+      ? "Пакет установится через pacman — система попросит пароль администратора."
+      : "Программа скачает новую версию и перезапустится.";
+    const ok = await modal({ title: `Обновить до ${u.latest}?`, text: `${how}\n\n${u.notes || ""}`.trim(), ok: "Обновить", kind: "primary" });
+    if (!ok) return;
+    const b = $("#updInstall");
+    b.disabled = true;
+    toast("Загрузка обновления…");
+    try {
+      await call("update_apply", { url: u.asset });
+    } finally {
+      b.disabled = false;
+    }
+  },
 });
 
 /* ═════════════ shell: pill, shortcuts, drag & drop, boot ═════════════ */
 
+const stateColor = (d) => !d ? "var(--faint)" : d.state === "device" ? "var(--accent)" : d.state === "unauthorized" ? "var(--warn)" : "var(--danger)";
+
 function paintPill() {
   const d = device();
   const pill = $("#pill");
-  $(".dot", pill).style.background = !d ? "var(--faint)" : d.state === "device" ? "var(--accent)" : d.state === "unauthorized" ? "var(--warn)" : "var(--danger)";
+  $(".dot", pill).style.background = stateColor(d);
   $(".name", pill).textContent = d ? devName() : "Нет устройства";
+}
+
+function paintStatus() {
+  const d = device();
+  const info = (d && S.info[d.serial]) || {};
+  const sb = $("#sbDevice");
+  $(".dot", sb).style.background = stateColor(d);
+  $(".name", sb).textContent = d ? `${devName()} · ${d.wireless ? "Wi‑Fi" : "USB"}` : "Нет устройства";
+  $("#sbBattery").textContent = info.battery != null ? `Батарея ${info.battery}%${info.charging ? " ⚡" : ""}` : "";
+  $("#sbScreen").classList.toggle("on", !!pages.screen?.running);
+  $("#sbCamera").classList.toggle("on", !!pages.camera?.running);
+  $("#sbMic").classList.toggle("on", !!pages.mic?.running);
+  const s = Theme.style(cfg.theme.style);
+  const p = PALETTES.find((x) => x.id === document.documentElement.dataset.palette);
+  $("#sbTheme").textContent = s.fixed || !p ? s.name : `${s.name} · ${p.name}`;
 }
 $("#pill").onclick = (e) => {
   const r = $("#pill").getBoundingClientRect();
@@ -1170,14 +1557,15 @@ $("#pill").onclick = (e) => {
   menu(r.left, r.bottom + 6, items);
 };
 onDevice(paintPill);
+onDevice(paintStatus);
 
-for (const n of $$(".nav")) n.onclick = () => go(n.dataset.page);
+for (const n of $$(".nav, .sb-chip")) n.onclick = () => go(n.dataset.page);
 for (const b of $$("[data-open-dir]")) b.onclick = () => call("open_path", { path: saveSub(b.dataset.openDir) }, { busy: false });
 
 document.addEventListener("keydown", (e) => {
   if ($("#modalBack").classList.contains("show")) return;
-  const order = ["devices", "screen", "camera", "apps", "files", "utils", "settings"];
-  if (e.ctrlKey && e.key >= "1" && e.key <= "7") { go(order[+e.key - 1]); e.preventDefault(); }
+  const order = ["devices", "screen", "camera", "mic", "apps", "files", "utils", "settings"];
+  if (e.ctrlKey && e.key >= "1" && e.key <= "8") { go(order[+e.key - 1]); e.preventDefault(); }
   if (e.key === "F5") { pages[current]?.refresh?.(); e.preventDefault(); }
   if (e.key === "Escape") hideMenu();
 });
@@ -1230,10 +1618,12 @@ function chooseLanguage() {
 }
 
 (async function boot() {
+  applyTheme();
+  applyUi();
   if (!cfg.lang) {
     cfg.lang = await chooseLanguage();
     save();
-    repaint($("#page-settings"));
+    for (const b of $$("#langTiles button")) b.classList.toggle("on", b.dataset.lang === cfg.lang);
   }
   I18N.apply(cfg.lang);
   call("set_language", { lang: cfg.lang }, { busy: false, quiet: true }).catch(() => {});
@@ -1242,9 +1632,16 @@ function chooseLanguage() {
     const info = await call("app_info", {}, { quiet: true });
     if (!cfg.save_dir) { cfg.save_dir = info.save_dir; save(); }
     $("#aboutVer").textContent = `Версия ${info.version}  ·  Tauri · adb · scrcpy`;
+    $("#updCurrent").textContent = `v${info.version}`;
   } catch (e) {
     toast(`Инструменты: ${e}`, "err");
   }
   await poll(true);
   setInterval(() => poll(), 2500);
+  if (cfg.updates.auto) {
+    setTimeout(async () => {
+      const u = await pages.settings.checkUpdate(false);
+      if (u?.newer) toast(`Доступна версия ${u.latest} — Настройки → Обновления`, "ok");
+    }, 4000);
+  }
 })();

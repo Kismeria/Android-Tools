@@ -1,8 +1,8 @@
 # Maintainer: Kismeria
 pkgname=android-tools-gui
-pkgver=2.2.1
+pkgver=2.3.0
 pkgrel=1
-pkgdesc="Android Tools: control an Android phone from the PC — scrcpy screen, apps, files, phone as a webcam"
+pkgdesc="Android Tools: control an Android phone from the PC — scrcpy screen, apps, files, phone as a webcam and microphone"
 arch=('x86_64')
 url="https://github.com/Kismeria/Android-Tools"
 license=('MIT')
@@ -10,7 +10,9 @@ options=('!debug')
 depends=('webkit2gtk-4.1' 'gtk3' 'android-tools' 'scrcpy' 'polkit' 'xdg-utils')
 makedepends=('rust' 'npm')
 optdepends=('v4l2loopback-dkms: use the phone as a webcam'
-            'v4l2loopback-utils: add the webcam without reloading the module')
+            'v4l2loopback-utils: add the webcam without reloading the module'
+            'libpulse: use the phone as a microphone (pactl, pacat)'
+            'pipewire-pulse: phone microphone on PipeWire systems')
 source=("$pkgname-$pkgver.tar.gz::$url/archive/refs/tags/v$pkgver.tar.gz")
 sha256sums=('SKIP')
 

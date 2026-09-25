@@ -15,6 +15,8 @@ trap 'rm -rf "$tmp"' EXIT
 echo "Android Tools: downloading..."
 curl -fL --progress-bar -o "$tmp/android-tools-gui.pkg.tar.zst" "$PKG_URL"
 sudo pacman -U --needed --noconfirm "$tmp/android-tools-gui.pkg.tar.zst"
+# Phone as a microphone: pactl/pacat talk to PipeWire or PulseAudio.
+command -v pactl >/dev/null || sudo pacman -S --needed --noconfirm libpulse
 
 # Optional: phone as a webcam (v4l2loopback via DKMS needs headers for the running kernel).
 answer="n"
