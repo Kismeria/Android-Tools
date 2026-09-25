@@ -89,7 +89,7 @@ pub struct Monitor {
 }
 
 impl Monitor {
-    pub fn open() -> Res<Self> {
+    pub fn open(buffer_ms: u32) -> Res<Self> {
         let mut child = hidden("pacat")
             .args([
                 "--playback",
@@ -97,7 +97,7 @@ impl Monitor {
                 "--format=s16le",
                 &format!("--rate={RATE}"),
                 &format!("--channels={CHANNELS}"),
-                "--latency-msec=60",
+                &format!("--latency-msec={buffer_ms}"),
                 "--client-name=Android Tools",
                 "--stream-name=Microphone monitor",
             ])

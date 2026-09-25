@@ -169,13 +169,19 @@ pub async fn mirror_start(
     title: String,
     save_dir: String,
     settings: MirrorSettings,
-) -> Res<()> {
+) -> Res<Option<String>> {
     let record_dir = PathBuf::from(save_dir).join(folder("Записи", "Recordings")).display().to_string();
     let args = mirror::build_args(&serial, &settings, &title, &record_dir);
+    let sound = mirror::needs_sndcpy(&settings);
     let mut m = Mirror::default();
-    let m = blocking(move || m.start(args).map(|_| m)).await?;
+    let (m, warning) = blocking(move || {
+        m.start(args)?;
+        let warning = if sound { m.start_sound(&serial).err() } else { None };
+        Ok((m, warning))
+    })
+    .await?;
     *state.mirror.lock().unwrap() = m;
-    Ok(())
+    Ok(warning.map(|w| format!("Звук Android 10: {w}")))
 }
 
 #[tauri::command]
@@ -350,6 +356,17 @@ pub async fn mic_remove(state: State<'_, AppState>) -> Res<()> {
 #[tauri::command]
 pub async fn apps_list(serial: String, kind: String) -> Res<Value> {
     blocking(move || adb::packages(&serial, &kind)).await
+}
+
+#[tauri::command]
+pub async fn apps_labels(serial: String, refresh: bool) -> Res<std::collections::HashMap<String, String>> {
+    blocking(move || crate::appicons::labels(&serial, refresh)).await
+}
+
+/// Icons arrive as `app-icon` events.
+#[tauri::command]
+pub fn apps_icons(app: AppHandle, serial: String, packages: Vec<String>) {
+    crate::appicons::load(app, serial, packages);
 }
 
 #[tauri::command]

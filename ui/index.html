@@ -14,7 +14,7 @@
     <button class="nav" data-page="screen" title="Экран · Ctrl+2"><i class="ic">&#xE7F4;</i><span>Экран</span></button>
     <button class="nav" data-page="camera" title="Камера · Ctrl+3"><i class="ic">&#xE722;</i><span>Камера</span></button>
     <button class="nav" data-page="mic" title="Микрофон · Ctrl+4"><i class="ic">&#xE720;</i><span>Микрофон</span></button>
-    <button class="nav" data-page="apps" title="Приложения · Ctrl+5"><i class="ic">&#xE71D;</i><span>Апки</span></button>
+    <button class="nav" data-page="apps" title="Приложения · Ctrl+5"><i class="ic">&#xE71D;</i><span>АПК</span></button>
     <button class="nav" data-page="files" title="Файлы · Ctrl+6"><i class="ic">&#xE8B7;</i><span>Файлы</span></button>
     <button class="nav" data-page="utils" title="Утилиты · Ctrl+7"><i class="ic">&#xE90F;</i><span>Утилиты</span></button>
     <div class="spacer"></div>
@@ -140,8 +140,18 @@
             </div>
           </div>
           <div class="card grow-card">
-            <div class="section">Горячие клавиши</div>
-            <div class="keys">
+            <div class="seg full tabs" id="scrKeysTab" style="margin-bottom:14px">
+              <button data-v="keys" class="on">Кнопки</button><button data-v="hotkeys">Горячие клавиши</button>
+            </div>
+            <div class="keypad k3" id="scrKeys">
+              <button class="btn" data-key="back" title="Назад"><i class="ic">&#xE72B;</i><span>Назад</span></button>
+              <button class="btn" data-key="home" title="Домой"><i class="ic">&#xE80F;</i><span>Домой</span></button>
+              <button class="btn" data-key="recent" title="Недавние"><i class="ic">&#xE7C4;</i><span>Недавние</span></button>
+              <button class="btn" data-key="vol_down" title="Тише"><i class="ic">&#xE993;</i><span>Тише</span></button>
+              <button class="btn" data-key="vol_up" title="Громче"><i class="ic">&#xE995;</i><span>Громче</span></button>
+              <button class="btn" data-key="power" title="Питание"><i class="ic">&#xE7E8;</i><span>Питание</span></button>
+            </div>
+            <div class="keys" id="scrHotkeys" style="display:none">
               <span class="mono">Alt + F</span><span class="hint">Весь экран</span>
               <span class="mono">Alt + O</span><span class="hint">Экран телефона выкл</span>
               <span class="mono">Alt + R</span><span class="hint">Повернуть</span>
@@ -184,6 +194,7 @@
               <div class="seg" data-bind="screen.audio_source">
                 <button data-v="output">Звук телефона</button><button data-v="mic">Микрофон</button>
               </div></div>
+            <div class="faint" id="scrAudioHint"></div>
           </div>
           <div class="card grow-card">
             <div class="section">Опции</div>
@@ -403,8 +414,9 @@
         <div class="card panel">
           <div id="appNone" class="empty" style="flex:1"><i class="ic">&#xE7B8;</i><span class="hint">Выберите приложение</span><span class="faint">Ctrl и Shift — несколько</span></div>
           <div id="appDetails" style="display:none">
-            <div class="app-badge"><i class="ic">&#xE7B8;</i></div>
-            <div class="big" id="appName" style="word-break:break-all;user-select:text"></div>
+            <span class="appicon big" id="appBadge"></span>
+            <div class="big" id="appName" style="word-break:break-word;user-select:text"></div>
+            <div class="faint mono" id="appPkg" style="word-break:break-all;user-select:text;margin-top:2px"></div>
             <div class="hint" id="appMeta" style="white-space:pre-line;margin-top:6px;user-select:text"></div>
             <div class="actions-v">
               <button class="btn" data-app="launch"><i class="ic">&#xE768;</i>Открыть</button>
@@ -451,19 +463,6 @@
                 <label class="switch"><span class="text">В буфер обмена</span><input type="checkbox" data-bind="utils.clipboard"><i class="knob"></i></label>
                 <button class="btn ghost small left" data-open-dir="Скриншоты"><i class="ic">&#xE8B7;</i>Папка</button>
               </div>
-            </div>
-          </div>
-          <div class="card">
-            <div class="section">Кнопки</div>
-            <div class="keypad">
-              <button class="btn" data-key="power" title="Питание"><i class="ic">&#xE7E8;</i></button>
-              <button class="btn" data-key="home" title="Домой"><i class="ic">&#xE80F;</i></button>
-              <button class="btn" data-key="back" title="Назад"><i class="ic">&#xE72B;</i></button>
-              <button class="btn" data-key="recent" title="Недавние"><i class="ic">&#xE7C4;</i></button>
-              <button class="btn" data-key="vol_down" title="Тише"><i class="ic">&#xE993;</i></button>
-              <button class="btn" data-key="vol_up" title="Громче"><i class="ic">&#xE995;</i></button>
-              <button class="btn" data-key="mute" title="Без звука"><i class="ic">&#xE74F;</i></button>
-              <button class="btn" data-key="play" title="Пауза / Играть"><i class="ic">&#xE768;</i></button>
             </div>
           </div>
           <div class="card grow-card">

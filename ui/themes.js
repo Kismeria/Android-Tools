@@ -4,6 +4,7 @@
 
 const STYLES = [
   { id: "modern", name: "Modern", note: "OLED", palette: "oled" },
+  { id: "cyberpunk", name: "Cyberpunk", note: "2077", fixed: true },
   { id: "win95", name: "Windows 95", note: "1995", fixed: true },
   { id: "xp", name: "Windows XP", note: "Luna", fixed: true },
   { id: "aqua", name: "Aqua", note: "Mac OS X", fixed: true },

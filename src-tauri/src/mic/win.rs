@@ -164,10 +164,10 @@ impl Output {
 pub struct Monitor(Player);
 
 impl Monitor {
-    pub fn open() -> Res<Self> {
+    pub fn open(buffer_ms: u32) -> Res<Self> {
         let en = enumerator()?;
         let dev = unsafe { en.GetDefaultAudioEndpoint(eRender, eConsole).map_err(err)? };
-        Player::open(&dev, 60).map(Monitor)
+        Player::open(&dev, buffer_ms).map(Monitor)
     }
 
     pub fn write(&mut self, samples: &[i16]) {

@@ -1,6 +1,6 @@
 # Maintainer: Kismeria
 pkgname=android-tools-gui
-pkgver=2.3.0
+pkgver=2.3.1
 pkgrel=1
 pkgdesc="Android Tools: control an Android phone from the PC — scrcpy screen, apps, files, phone as a webcam and microphone"
 arch=('x86_64')

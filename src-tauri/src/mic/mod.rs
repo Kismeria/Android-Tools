@@ -310,7 +310,7 @@ impl Ctx {
             }
             if live.monitor && !monitor_failed {
                 if monitor.is_none() {
-                    match sys::Monitor::open() {
+                    match sys::Monitor::open(60) {
                         Ok(m) => monitor = Some(m),
                         Err(e) => {
                             monitor_failed = true;
@@ -509,7 +509,7 @@ mod tests {
     fn wasapi_monitor_and_status() {
         let st = sys::status();
         println!("kind={} device={} name={}", st.kind, st.device, st.name);
-        let mut m = sys::Monitor::open().expect("monitor");
+        let mut m = sys::Monitor::open(60).expect("monitor");
         let silence = vec![0i16; 960 * 2];
         for _ in 0..20 {
             m.write(&silence);

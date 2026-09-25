@@ -1,12 +1,14 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod adb;
+mod appicons;
 #[cfg_attr(not(windows), path = "camera_linux.rs")]
 mod camera;
 mod commands;
 mod iphone;
 mod mic;
 mod mirror;
+mod sndcpy;
 #[cfg_attr(not(windows), path = "tools_linux.rs")]
 mod tools;
 mod update;
@@ -152,6 +154,8 @@ fn main() {
             commands::mic_remove,
             commands::apps_list,
             commands::app_details,
+            commands::apps_labels,
+            commands::apps_icons,
             commands::app_action,
             commands::app_install,
             commands::files_list,

@@ -522,8 +522,33 @@ registerPage("screen", {
     this.paintPreset();
     this.syncControl();
     $("#scrStart").onclick = () => this.toggle();
-    onDevice(() => ($("#scrDevice").textContent = device() ? devName() : "Нет устройства"));
+    for (const b of $$("[data-key]", el)) {
+      b.onclick = () => { const s = requireDevice(); if (s) call("key_event", { serial: s, key: b.dataset.key }, { busy: false }); };
+    }
+    $("#scrKeysTab").onclick = (e) => {
+      const b = e.target.closest("button");
+      if (!b) return;
+      for (const x of $$("#scrKeysTab button")) x.classList.toggle("on", x === b);
+      $("#scrKeys").style.display = b.dataset.v === "keys" ? "" : "none";
+      $("#scrHotkeys").style.display = b.dataset.v === "hotkeys" ? "" : "none";
+    };
+    onDevice(() => {
+      $("#scrDevice").textContent = device() ? devName() : "Нет устройства";
+      this.paintAudio();
+    });
+    this.paintAudio();
     setInterval(() => this.watch(), 1000);
+  },
+  // Sound: scrcpy needs Android 11+, Android 10 goes through sndcpy, older phones have none.
+  paintAudio() {
+    const sdk = S.info[S.serial]?.sdk || 0;
+    const hint = $("#scrAudioHint");
+    hint.textContent = !sdk ? ""
+      : sdk === 29 ? "Android 10: звук идёт через помощник sndcpy — он сам установится на телефон при первом запуске. Только звук телефона, без микрофона."
+      : sdk < 29 ? `Android ${S.info[S.serial].android}: передача звука работает с Android 10.`
+      : "";
+    const mic = $('#page-screen [data-bind="screen.audio_source"] [data-v=mic]');
+    mic.disabled = sdk > 0 && sdk < 30;
   },
   paintPreset() {
     for (const b of $$("#scrPreset button")) b.classList.toggle("on", b.dataset.v === cfg.screen.preset);
@@ -541,9 +566,11 @@ registerPage("screen", {
     $("#scrStart").disabled = true;
     try {
       this.warned = false;
-      await call("mirror_start", {
-        serial, title: `${devName()} — Android Tools`, saveDir: cfg.save_dir, settings: cfg.screen,
+      const warning = await call("mirror_start", {
+        serial, title: `${devName()} — Android Tools`, saveDir: cfg.save_dir,
+        settings: { ...cfg.screen, sdk: S.info[serial]?.sdk || 0 },
       });
+      if (warning) toast(warning, "err");
       this.setRunning(true);
       if (cfg.screen.record) toast("Идёт запись в папку «Записи»", "ok");
     } finally {
@@ -977,8 +1004,26 @@ registerPage("mic", {
 
 /* ═════════════ APPS ═════════════ */
 
+// App label, falling back to the last part of the package name (services have no label).
+const appLabel = (pkg, labels) => labels[pkg] || pkg.split(".").pop().replace(/^./, (c) => c.toUpperCase());
+const iconCss = (icon) => (icon?.kind === "layers" ? icon.layers.slice().reverse().join(", ") : "");
+function paintAppIcon(el, pkg, label, icon) {
+  el.className = `appicon${icon?.kind === "layers" ? (icon.adaptive ? " real adaptive" : " real") : ""}`;
+  if (icon?.kind === "layers") {
+    el.style.background = iconCss(icon);
+    el.textContent = "";
+  } else {
+    let h = 0;
+    for (const c of pkg) h = (h * 31 + c.charCodeAt(0)) >>> 0;
+    el.style.background = `hsl(${h % 360} 55% 42%)`;
+    el.textContent = (label[0] || "?").toUpperCase();
+  }
+}
+
 registerPage("apps", {
   items: [],
+  labels: {},
+  icons: {},
   selected: new Set(),
   anchor: null,
   loadedFor: null,
@@ -1011,6 +1056,13 @@ registerPage("apps", {
         { label: "Удалить", danger: true, action: () => this.action("uninstall") },
       ]);
     });
+    T.event.listen("app-icon", (e) => {
+      const { package: pkg, icon } = e.payload;
+      this.icons[pkg] = icon;
+      const row = $(`#appList [data-pkg="${CSS.escape(pkg)}"] .appicon`);
+      if (row) paintAppIcon(row, pkg, appLabel(pkg, this.labels), icon);
+      if (this.selected.size === 1 && this.selected.has(pkg)) paintAppIcon($("#appBadge"), pkg, appLabel(pkg, this.labels), icon);
+    });
     onDevice(() => current === "apps" && this.show());
   },
   show() {
@@ -1028,24 +1080,41 @@ registerPage("apps", {
     const serial = requireDevice();
     if (!serial) return this.empty("Нет устройства", "Подключите телефон на вкладке «Девайсы»");
     const kind = cfg.apps.filter;
+    if (this.iconsFor !== serial) { this.icons = {}; this.labels = {}; this.iconsFor = serial; }
     this.items = await call("apps_list", { serial, kind });
     this.loadedFor = serial + kind;
     const names = new Set(this.items.map((a) => a.package));
     this.selected = new Set([...this.selected].filter((p) => names.has(p)));
     this.render();
+    // Names come from the phone (a few seconds), icons stream in one by one.
+    call("apps_labels", { serial, refresh: false }, { busy: false, quiet: true }).then((labels) => {
+      this.labels = labels;
+      this.render();
+      call("apps_icons", { serial, packages: this.sorted().map((a) => a.package).filter((p) => !this.icons[p]) }, { busy: false, quiet: true });
+    }).catch(() => {});
+  },
+  sorted() {
+    const label = (a) => appLabel(a.package, this.labels).toLowerCase();
+    return this.items.slice().sort((a, b) => label(a).localeCompare(label(b), I18N.locale));
   },
   visible() {
     const q = ($("#appSearch", this.actions)?.value || "").trim().toLowerCase();
-    return q ? this.items.filter((a) => a.package.toLowerCase().includes(q)) : this.items;
+    const all = this.sorted();
+    return q ? all.filter((a) => a.package.toLowerCase().includes(q) || appLabel(a.package, this.labels).toLowerCase().includes(q)) : all;
   },
   render() {
     const shown = this.visible();
     const list = $("#appList");
     list.innerHTML = shown.map((a) => `
-      <div class="item${a.disabled ? " off" : ""}${this.selected.has(a.package) ? " sel" : ""}" data-pkg="${esc(a.package)}">
-        <i class="ic">${a.disabled ? "&#xF140;" : "&#xE7B8;"}</i><span class="name">${esc(a.package)}</span>
+      <div class="item app${a.disabled ? " off" : ""}${this.selected.has(a.package) ? " sel" : ""}" data-pkg="${esc(a.package)}">
+        <span class="appicon"></span>
+        <span class="name"><span class="label">${esc(appLabel(a.package, this.labels))}</span><span class="pkg">${esc(a.package)}</span></span>
         ${a.disabled ? `<span class="meta">отключено</span>` : ""}
       </div>`).join("") || `<div class="empty"><span class="hint">Ничего не найдено</span></div>`;
+    for (const row of $$("#appList .item")) {
+      const pkg = row.dataset.pkg;
+      paintAppIcon($(".appicon", row), pkg, appLabel(pkg, this.labels), this.icons[pkg]);
+    }
     const total = this.items.length;
     $("#appCount").textContent = shown.length !== total ? `${shown.length} из ${total}` : plural(total, "приложение", "приложения", "приложений");
     this.paintSel();
@@ -1076,12 +1145,17 @@ registerPage("apps", {
     const one = pkgs.length === 1;
     for (const k of ["launch", "clear", "toggle"]) $(`[data-app=${k}]`).style.display = one ? "" : "none";
     if (!one) {
+      paintAppIcon($("#appBadge"), "", String(pkgs.length), null);
+      $("#appPkg").textContent = "";
       $("#appName").textContent = `Выбрано: ${pkgs.length}`;
       $("#appMeta").textContent = "Действия применятся ко всем";
       return;
     }
     const app = this.items.find((a) => a.package === pkgs[0]) || {};
-    $("#appName").textContent = pkgs[0];
+    const label = appLabel(pkgs[0], this.labels);
+    paintAppIcon($("#appBadge"), pkgs[0], label, this.icons[pkgs[0]]);
+    $("#appName").textContent = label;
+    $("#appPkg").textContent = pkgs[0];
     $("#appMeta").textContent = "…";
     $("[data-app=toggle] span").textContent = app.disabled ? "Включить" : "Отключить";
     $("[data-app=launch]").disabled = !!app.disabled;
@@ -1344,9 +1418,6 @@ registerPage("utils", {
     bindAll(el);
     $("#shotTake").onclick = () => this.shot();
     $("#shotThumb").onclick = () => this.lastShot && call("open_path", { path: this.lastShot }, { busy: false });
-    for (const b of $$("[data-key]", el)) {
-      b.onclick = () => { const s = requireDevice(); if (s) call("key_event", { serial: s, key: b.dataset.key }, { busy: false }); };
-    }
     for (const b of $$("[data-reboot]", el)) {
       b.onclick = async () => {
         const s = requireDevice();

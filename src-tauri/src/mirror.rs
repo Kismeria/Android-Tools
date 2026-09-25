@@ -37,6 +37,14 @@ pub struct MirrorSettings {
     pub orientation: String,
     #[serde(default)]
     pub power_off_on_close: bool,
+    /// Android SDK level: 29 (Android 10) gets its sound through sndcpy.
+    #[serde(default)]
+    pub sdk: u32,
+}
+
+/// scrcpy captures audio only on Android 11+; Android 10 plays through the sndcpy helper.
+pub fn needs_sndcpy(s: &MirrorSettings) -> bool {
+    s.audio && s.sdk == 29
 }
 
 pub fn build_args(serial: &str, s: &MirrorSettings, title: &str, record_dir: &str) -> Vec<String> {
@@ -51,7 +59,7 @@ pub fn build_args(serial: &str, s: &MirrorSettings, title: &str, record_dir: &st
     if s.max_size > 0 {
         a.push(format!("--max-size={}", s.max_size));
     }
-    if !s.audio {
+    if !s.audio || needs_sndcpy(s) {
         a.push("--no-audio".into());
     } else if s.audio_source == "mic" {
         a.push("--audio-source=mic".into());
@@ -101,14 +109,27 @@ pub fn build_args(serial: &str, s: &MirrorSettings, title: &str, record_dir: &st
 pub struct Mirror {
     child: Option<Child>,
     blocked: Arc<AtomicBool>,
+    sound: Option<crate::sndcpy::Sndcpy>,
 }
 
 impl Mirror {
     pub fn running(&mut self) -> bool {
-        match &mut self.child {
+        let alive = match &mut self.child {
             Some(c) => matches!(c.try_wait(), Ok(None)),
             None => false,
+        };
+        if !alive {
+            if let Some(s) = self.sound.take() {
+                s.stop();
+            }
         }
+        alive
+    }
+
+    /// Android 10 sound; a failure leaves the picture running and returns the reason.
+    pub fn start_sound(&mut self, serial: &str) -> Res<()> {
+        self.sound = Some(crate::sndcpy::Sndcpy::start(serial)?);
+        Ok(())
     }
 
     pub fn start(&mut self, args: Vec<String>) -> Res<()> {
@@ -177,6 +198,9 @@ impl Mirror {
     }
 
     pub fn stop(&mut self) {
+        if let Some(s) = self.sound.take() {
+            s.stop();
+        }
         if let Some(mut c) = self.child.take() {
             let _ = c.kill();
             let _ = c.wait();
