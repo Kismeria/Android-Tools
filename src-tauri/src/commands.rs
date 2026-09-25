@@ -27,6 +27,7 @@ impl AppState {
         if let Some(mic) = self.mic.lock().unwrap().take() {
             mic.stop();
         }
+        crate::iphone::stop();
     }
 }
 
@@ -258,6 +259,23 @@ pub async fn camera_remove(state: State<'_, AppState>) -> Res<()> {
         camera::install::run_elevated("--camera-remove")
     })
     .await
+}
+
+// ── iPhone ──
+
+#[tauri::command]
+pub async fn iphone_start(app: AppHandle) -> Res<crate::iphone::Status> {
+    blocking(move || crate::iphone::start(Some(app))).await
+}
+
+#[tauri::command]
+pub fn iphone_stop() {
+    crate::iphone::stop();
+}
+
+#[tauri::command]
+pub fn iphone_status() -> crate::iphone::Status {
+    crate::iphone::status()
 }
 
 // ── microphone ──

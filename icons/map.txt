@@ -65,3 +65,4 @@ E71E zoom_in
 E945 flash
 E9D9 pulse
 E771 paint_brush
+E8C8 copy

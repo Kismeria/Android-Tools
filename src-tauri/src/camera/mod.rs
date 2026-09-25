@@ -1,6 +1,7 @@
 //! Phone camera → "Android Tools Camera".
-//! scrcpy-server streams H.264 over an adb reverse tunnel; frames are decoded with Media
-//! Foundation, transformed, and published to shared memory for the camera DLL.
+//! Android: scrcpy-server streams H.264 over an adb reverse tunnel; frames are decoded with
+//! Media Foundation. iPhone: JPEG frames from Safari (crate::iphone). Either way the picture is
+//! transformed and published to shared memory for the camera DLL (or to the DirectShow camera).
 pub mod decoder;
 pub mod dshow;
 pub mod install;
@@ -20,6 +21,7 @@ use tauri::{AppHandle, Emitter};
 
 use crate::util::{hidden, Res};
 use crate::{adb, tools};
+use decoder::Nv12;
 use output::SharedFrame;
 use transform::{Canvas, Options};
 
@@ -37,6 +39,9 @@ pub struct Settings {
     pub mode: String,
     pub torch: bool,
     pub live: Live,
+    /// "android" (default) or "iphone".
+    #[serde(default)]
+    pub source: String,
 }
 
 #[derive(Deserialize, Serialize, Clone, Copy, Default)]
@@ -53,6 +58,8 @@ struct Status {
     text: String,
     fps: f32,
     native: bool,
+    /// native | compat | iphone
+    source: &'static str,
 }
 
 pub struct Camera {
@@ -81,7 +88,11 @@ impl Camera {
             native: s.mode == "native" || (s.mode == "auto" && s.sdk >= 31),
             s,
         };
-        let handle = std::thread::spawn(move || ctx.run());
+        let handle = if ctx.s.source == "iphone" {
+            std::thread::spawn(move || ctx.run_iphone())
+        } else {
+            std::thread::spawn(move || ctx.run())
+        };
         Camera { thread: Some(handle), ..cam }
     }
 
@@ -119,7 +130,8 @@ struct Ctx {
 
 impl Ctx {
     fn status(&self, state: &'static str, text: impl Into<String>, fps: f32) {
-        let _ = self.app.emit("camera-status", Status { state, text: text.into(), fps, native: self.native });
+        let source = if self.s.source == "iphone" { "iphone" } else if self.native { "native" } else { "compat" };
+        let _ = self.app.emit("camera-status", Status { state, text: text.into(), fps, native: self.native, source });
     }
 
     fn error(&self, text: impl Into<String>) {
@@ -146,11 +158,42 @@ impl Ctx {
     }
 
     fn size(&self) -> (u32, u32) {
-        match self.s.quality {
-            480 => (848, 480), // DirectShow camera needs multiples of 4
-            1080 => (1920, 1080),
-            _ => (1280, 720),
+        size_for(self.s.quality)
+    }
+
+    /// iPhone: frames arrive from the Safari page through crate::iphone.
+    fn run_iphone(self) {
+        self.status("connecting", "Ждём iPhone…", 0.0);
+        if !crate::iphone::connected() {
+            self.error("iPhone не подключён: откройте ссылку или QR-код на вкладке «Девайсы»");
+            self.status("stopped", "", 0.0);
+            return;
         }
+        let (w, h) = self.size();
+        let mut output = Output::open(self.app.clone(), self.stop.clone(), (w, h), self.s.fps, "iphone");
+        let live = self.live.clone();
+        let mut jpeg = Jpeg::default();
+        crate::iphone::set_sink(Some(Box::new(move |data: &[u8]| {
+            if let Some(frame) = jpeg.decode(data) {
+                output.push(&frame, *live.lock().unwrap());
+            }
+        })));
+        let (qw, qh) = match self.s.quality { 480 => (640, 480), 1080 => (1920, 1080), _ => (1280, 720) };
+        crate::iphone::send(serde_json::json!({
+            "cmd": "start", "facing": self.s.facing, "width": qw, "height": qh, "fps": self.s.fps,
+            "quality": if self.s.bitrate >= 10 { 0.85 } else if self.s.bitrate >= 5 { 0.75 } else { 0.6 },
+            "torch": self.s.torch,
+        }));
+        while !self.stopped() {
+            if !crate::iphone::connected() {
+                self.error("iPhone отключился");
+                break;
+            }
+            std::thread::sleep(Duration::from_millis(150));
+        }
+        crate::iphone::set_sink(None);
+        crate::iphone::send(serde_json::json!({ "cmd": "stop" }));
+        self.status("stopped", "", 0.0);
     }
 
     fn server_args(&self, scid: &str) -> Vec<String> {
@@ -279,67 +322,9 @@ impl Ctx {
     }
 
     fn receive(&self, mut stream: TcpStream) -> Res<()> {
-        let (out_w, out_h) = self.size();
-        let (max_w, max_h) = SharedFrame::max_size();
-        let (out_w, out_h) = (out_w.min(max_w), out_h.min(max_h));
-
-        // Windows 10: DirectShow camera. Windows 11: Media Foundation camera via shared memory.
-        let dshow_mode = install::use_dshow();
-        // The DirectShow camera is fed from its own thread at a fixed rate with the latest
-        // picture, so apps keep receiving frames while the phone sends none (static image).
-        let latest_bgr: Arc<Mutex<Option<Vec<u8>>>> = Arc::new(Mutex::new(None));
-        if dshow_mode {
-            let sender = dshow::Sender::open(out_w, out_h, self.s.fps);
-            match sender {
-                Ok(sender) => {
-                    let (latest, stop) = (latest_bgr.clone(), self.stop.clone());
-                    std::thread::spawn(move || {
-                        let mut frame = vec![0u8; (sender.width * sender.height * 3) as usize];
-                        while !stop.load(Ordering::SeqCst) {
-                            if let Some(new) = latest.lock().unwrap().take() {
-                                frame = new;
-                            }
-                            sender.send(&frame);
-                        }
-                    });
-                }
-                Err(e) => self.error(format!("Камера Windows: {e}")),
-            }
-        }
-
-        // Heartbeat + lazy (re)open of the shared frame, independent of frame arrival.
-        let shared: Arc<Mutex<Option<SharedFrame>>> =
-            Arc::new(Mutex::new(if dshow_mode { None } else { SharedFrame::open() }));
-        let decoded = Arc::new(AtomicU32::new(0));
-        {
-            let (shared, stop, decoded) = (shared.clone(), self.stop.clone(), decoded.clone());
-            let app = self.app.clone();
-            let native = self.native;
-            std::thread::spawn(move || {
-                let mut last = decoded.load(Ordering::Relaxed);
-                let mut tick = Instant::now();
-                while !stop.load(Ordering::SeqCst) {
-                    std::thread::sleep(Duration::from_millis(250));
-                    if !dshow_mode {
-                        let mut g = shared.lock().unwrap();
-                        match g.as_ref() {
-                            Some(f) => f.touch(),
-                            None => *g = SharedFrame::open(),
-                        }
-                    }
-                    if tick.elapsed() >= Duration::from_secs(1) {
-                        let now = decoded.load(Ordering::Relaxed);
-                        let fps = (now - last) as f32 / tick.elapsed().as_secs_f32();
-                        last = now;
-                        tick = Instant::now();
-                        let _ = app.emit("camera-status", Status { state: "running", text: "Трансляция".into(), fps, native });
-                    }
-                }
-            });
-        }
-
+        let source = if self.native { "native" } else { "compat" };
+        let mut output = Output::open(self.app.clone(), self.stop.clone(), self.size(), self.s.fps, source);
         let mut decoder = decoder::Decoder::new().map_err(|e| format!("Декодер H.264: {e}"))?;
-        let mut canvas = Canvas::new(out_w, out_h);
         let mut codec = [0u8; 4];
         stream.read_exact(&mut codec).map_err(|e| e.to_string())?;
         if &codec != b"h264" {
@@ -350,7 +335,6 @@ impl Ctx {
         let mut header = [0u8; 12];
         let mut config: Vec<u8> = Vec::new();
         let mut packet = Vec::new();
-        let mut last_preview = Instant::now() - Duration::from_secs(1);
         while !self.stopped() {
             stream.read_exact(&mut header).map_err(|e| e.to_string())?;
             let first = u64::from_be_bytes(header[..8].try_into().unwrap());
@@ -369,37 +353,190 @@ impl Ctx {
             au.extend_from_slice(&packet);
 
             let live = *self.live.lock().unwrap();
-            let opts = Options { rotation: live.rotation, mirror: live.mirror, fill: live.fill };
-            let mut produced = false;
             decoder
-                .decode(&au, pts, &mut |frame| {
-                    canvas.draw(frame, opts);
-                    produced = true;
-                })
+                .decode(&au, pts, &mut |frame| output.push(frame, live))
                 .map_err(|e| format!("Декодирование: {e}"))?;
-            if !produced {
-                continue;
-            }
-            decoded.fetch_add(1, Ordering::Relaxed);
-            if let Some(f) = shared.lock().unwrap().as_ref() {
-                f.write(out_w, out_h, &canvas.data);
-            }
-            if dshow_mode {
-                let mut bgr = Vec::new();
-                canvas.to_bgr(&mut bgr);
-                *latest_bgr.lock().unwrap() = Some(bgr);
-            }
-            if live.preview && last_preview.elapsed() >= Duration::from_millis(80) {
-                last_preview = Instant::now();
-                let (rgb, w, h) = canvas.preview_rgb(640);
-                let mut jpeg = Vec::new();
-                let enc = jpeg_encoder::Encoder::new(&mut jpeg, 72);
-                if enc.encode(&rgb, w as u16, h as u16, jpeg_encoder::ColorType::Rgb).is_ok() {
-                    let b64 = base64::engine::general_purpose::STANDARD.encode(&jpeg);
-                    let _ = self.app.emit("camera-frame", format!("data:image/jpeg;base64,{b64}"));
+        }
+        Ok(())
+    }
+}
+
+fn size_for(quality: u32) -> (u32, u32) {
+    let (w, h) = match quality {
+        480 => (848, 480), // DirectShow camera needs multiples of 4
+        1080 => (1920, 1080),
+        _ => (1280, 720),
+    };
+    let (max_w, max_h) = SharedFrame::max_size();
+    (w.min(max_w), h.min(max_h))
+}
+
+/// Where transformed frames go: the system camera (Windows 11 shared memory or the Windows 10
+/// DirectShow camera), the UI preview, and the fps counter.
+struct Output {
+    app: AppHandle,
+    canvas: Canvas,
+    shared: Arc<Mutex<Option<SharedFrame>>>,
+    latest_bgr: Option<Arc<Mutex<Option<Vec<u8>>>>>,
+    decoded: Arc<AtomicU32>,
+    last_preview: Instant,
+}
+
+impl Output {
+    fn open(app: AppHandle, stop: Arc<AtomicBool>, (out_w, out_h): (u32, u32), fps: u32, source: &'static str) -> Self {
+        // Windows 10: DirectShow camera. Windows 11: Media Foundation camera via shared memory.
+        let dshow_mode = install::use_dshow();
+        // The DirectShow camera is fed from its own thread at a fixed rate with the latest
+        // picture, so apps keep receiving frames while the phone sends none (static image).
+        let mut latest_bgr = None;
+        if dshow_mode {
+            match dshow::Sender::open(out_w, out_h, fps) {
+                Ok(sender) => {
+                    let latest: Arc<Mutex<Option<Vec<u8>>>> = Arc::new(Mutex::new(None));
+                    latest_bgr = Some(latest.clone());
+                    let stop = stop.clone();
+                    std::thread::spawn(move || {
+                        let mut frame = vec![0u8; (sender.width * sender.height * 3) as usize];
+                        while !stop.load(Ordering::SeqCst) {
+                            if let Some(new) = latest.lock().unwrap().take() {
+                                frame = new;
+                            }
+                            sender.send(&frame);
+                        }
+                    });
+                }
+                Err(e) => {
+                    let _ = app.emit("camera-error", format!("Камера Windows: {e}"));
                 }
             }
         }
-        Ok(())
+
+        // Heartbeat + lazy (re)open of the shared frame, independent of frame arrival.
+        let shared: Arc<Mutex<Option<SharedFrame>>> =
+            Arc::new(Mutex::new(if dshow_mode { None } else { SharedFrame::open() }));
+        let decoded = Arc::new(AtomicU32::new(0));
+        {
+            let (shared, decoded, app) = (shared.clone(), decoded.clone(), app.clone());
+            std::thread::spawn(move || {
+                let mut last = decoded.load(Ordering::Relaxed);
+                let mut tick = Instant::now();
+                while !stop.load(Ordering::SeqCst) {
+                    std::thread::sleep(Duration::from_millis(250));
+                    if !dshow_mode {
+                        let mut g = shared.lock().unwrap();
+                        match g.as_ref() {
+                            Some(f) => f.touch(),
+                            None => *g = SharedFrame::open(),
+                        }
+                    }
+                    if tick.elapsed() >= Duration::from_secs(1) {
+                        let now = decoded.load(Ordering::Relaxed);
+                        let fps = (now - last) as f32 / tick.elapsed().as_secs_f32();
+                        last = now;
+                        tick = Instant::now();
+                        let _ = app.emit("camera-status", Status {
+                            state: "running", text: "Трансляция".into(), fps, native: source == "native", source,
+                        });
+                    }
+                }
+            });
+        }
+        let _ = app.emit("camera-status", Status { state: "running", text: "Трансляция".into(), fps: 0.0, native: source == "native", source });
+        Output { app, canvas: Canvas::new(out_w, out_h), shared, latest_bgr, decoded, last_preview: Instant::now() - Duration::from_secs(1) }
+    }
+
+    fn push(&mut self, frame: &Nv12, live: Live) {
+        self.canvas.draw(frame, Options { rotation: live.rotation, mirror: live.mirror, fill: live.fill });
+        self.decoded.fetch_add(1, Ordering::Relaxed);
+        let (w, h) = (self.canvas.width, self.canvas.height);
+        if let Some(f) = self.shared.lock().unwrap().as_ref() {
+            f.write(w, h, &self.canvas.data);
+        }
+        if let Some(latest) = &self.latest_bgr {
+            let mut bgr = Vec::new();
+            self.canvas.to_bgr(&mut bgr);
+            *latest.lock().unwrap() = Some(bgr);
+        }
+        if live.preview && self.last_preview.elapsed() >= Duration::from_millis(80) {
+            self.last_preview = Instant::now();
+            let (rgb, pw, ph) = self.canvas.preview_rgb(640);
+            let mut jpeg = Vec::new();
+            let enc = jpeg_encoder::Encoder::new(&mut jpeg, 72);
+            if enc.encode(&rgb, pw as u16, ph as u16, jpeg_encoder::ColorType::Rgb).is_ok() {
+                let b64 = base64::engine::general_purpose::STANDARD.encode(&jpeg);
+                let _ = self.app.emit("camera-frame", format!("data:image/jpeg;base64,{b64}"));
+            }
+        }
+    }
+}
+
+/// JPEG from Safari → NV12 (video range) for the canvas.
+#[derive(Default)]
+struct Jpeg {
+    nv12: Vec<u8>,
+    width: u32,
+    height: u32,
+}
+
+impl Jpeg {
+    fn decode(&mut self, data: &[u8]) -> Option<Nv12<'_>> {
+        use zune_jpeg::zune_core::colorspace::ColorSpace;
+        use zune_jpeg::zune_core::options::DecoderOptions;
+        let opts = DecoderOptions::default().jpeg_set_out_colorspace(ColorSpace::YCbCr);
+        let mut dec = zune_jpeg::JpegDecoder::new_with_options(std::io::Cursor::new(data), opts);
+        let ycc = dec.decode().ok()?;
+        let (w, h) = dec.dimensions()?;
+        let (w, h) = (w & !1, h & !1);
+        if w == 0 || h == 0 {
+            return None;
+        }
+        let stride = dec.dimensions()?.0;
+        self.nv12.resize(w * h * 3 / 2, 0);
+        // Full-range JPEG YCbCr → video-range NV12 (4:2:0).
+        let luma = |v: u8| (16 + (v as u32 * 219 + 127) / 255) as u8;
+        let chroma = |v: u32| (128 + ((v as i32 / 4 - 128) * 224 + 127) / 255) as u8;
+        let (yp, uvp) = self.nv12.split_at_mut(w * h);
+        for y in 0..h {
+            let row = &ycc[y * stride * 3..];
+            for x in 0..w {
+                yp[y * w + x] = luma(row[x * 3]);
+            }
+        }
+        for y in 0..h / 2 {
+            let (r0, r1) = (&ycc[(2 * y) * stride * 3..], &ycc[(2 * y + 1) * stride * 3..]);
+            for x in 0..w / 2 {
+                let (a, b) = (x * 6, x * 6 + 3);
+                let cb = r0[a + 1] as u32 + r0[b + 1] as u32 + r1[a + 1] as u32 + r1[b + 1] as u32;
+                let cr = r0[a + 2] as u32 + r0[b + 2] as u32 + r1[a + 2] as u32 + r1[b + 2] as u32;
+                uvp[y * w + x * 2] = chroma(cb);
+                uvp[y * w + x * 2 + 1] = chroma(cr);
+            }
+        }
+        self.width = w as u32;
+        self.height = h as u32;
+        Some(Nv12 { data: &self.nv12, width: self.width, height: self.height, stride: self.width, uv_offset: w * h })
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn jpeg_to_video_range_nv12() {
+        // Solid red 64×48 → BT.601 video range: Y≈81, U≈90, V≈240.
+        let rgb: Vec<u8> = (0..64 * 48).flat_map(|_| [255u8, 0, 0]).collect();
+        let mut jpeg = Vec::new();
+        jpeg_encoder::Encoder::new(&mut jpeg, 95).encode(&rgb, 64, 48, jpeg_encoder::ColorType::Rgb).unwrap();
+        let mut dec = Jpeg::default();
+        let f = dec.decode(&jpeg).expect("decoded");
+        assert_eq!((f.width, f.height, f.stride, f.uv_offset), (64, 48, 64, 64 * 48));
+        let (y, u, v) = (f.data[100] as i32, f.data[f.uv_offset + 10] as i32, f.data[f.uv_offset + 11] as i32);
+        assert!((y - 81).abs() <= 4 && (u - 90).abs() <= 4 && (v - 240).abs() <= 4, "y={y} u={u} v={v}");
+    }
+
+    #[test]
+    fn bad_jpeg_is_skipped() {
+        assert!(Jpeg::default().decode(b"not a jpeg").is_none());
     }
 }

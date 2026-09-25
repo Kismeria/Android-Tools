@@ -21,8 +21,9 @@ const DEFAULTS = {
   },
   camera: {
     facing: "front", camera_id: "", quality: 720, fps: 30, bitrate: 6, rotation: 0, mirror: false, fill: false,
-    preview: true, torch: false, mode: "auto",
+    preview: true, torch: false, mode: "auto", source: "android",
   },
+  iphone: { enabled: false },
   mic: {
     source: "mic", buffer: 40, gain: 100, mute: false, gate: false, gate_db: -50, limiter: true, mono: false,
     monitor: false, monitor_volume: 80,
@@ -335,6 +336,7 @@ registerPage("devices", {
     $("#pairCode").onkeydown = (e) => e.key === "Enter" && pair();
     $("#wifiPair").onclick = pair;
     for (const t of $$("[data-quick]", el)) t.onclick = () => this.quick(t.dataset.quick);
+    this.iphoneInit();
     $("#wifiScan").onclick = async () => {
       const found = await call("wifi_scan");
       if (!found.length) return toast("В сети ничего не найдено");
@@ -345,10 +347,57 @@ registerPage("devices", {
     this.render();
   },
 
+  iphoneInit() {
+    $("#iphToggle").onclick = async () => {
+      if (this.iph?.running) {
+        await call("iphone_stop", {}, { busy: false });
+        cfg.iphone.enabled = false;
+        save();
+        return this.iphPaint({ running: false, urls: [], qrs: [], phone: null });
+      }
+      const st = await call("iphone_start");
+      cfg.iphone.enabled = true;
+      save();
+      this.iphPaint(st);
+    };
+    $("#iphUrl").onchange = (e) => ($("#iphQr").innerHTML = this.iph?.qrs[e.target.selectedIndex] || "");
+    $("#iphCopy").onclick = () => {
+      navigator.clipboard.writeText($("#iphUrl").value);
+      toast("Ссылка скопирована", "ok");
+    };
+    T.event.listen("iphone-status", (e) => this.iphPaint(e.payload));
+    // The server remembers being on: the phone's bookmark keeps working after a restart.
+    const first = cfg.iphone.enabled ? call("iphone_start", {}, { busy: false, quiet: true }) : call("iphone_status", {}, { busy: false, quiet: true });
+    first.then((st) => this.iphPaint(st)).catch(() => {});
+  },
+  iphPaint(st) {
+    const was = this.iph;
+    this.iph = st;
+    $("#iphOn").style.display = st.running ? "" : "none";
+    $("#iphOff").style.display = st.running ? "none" : "";
+    const b = $("#iphToggle");
+    b.className = `btn small ${st.running ? "" : "primary"}`;
+    b.innerHTML = st.running ? `<i class="ic">&#xE71A;</i><span>Выключить</span>` : `<i class="ic">&#xE71B;</i><span>Подключить iPhone</span>`;
+    const p = st.phone;
+    const state = $("#iphState");
+    state.textContent = p
+      ? `● ${[p.name, p.os].filter(Boolean).join(" · ")}${p.camera ? " · камера включена" : ""}`
+      : st.running ? "Ждём iPhone…" : "Не подключён";
+    state.classList.toggle("ok", !!p);
+    if (st.running && (!was || String(was.urls) !== String(st.urls))) {
+      $("#iphUrl").innerHTML = st.urls.map((u) => `<option>${esc(u)}</option>`).join("");
+      $("#iphQr").innerHTML = st.qrs[0] || "";
+    }
+    if (p && !was?.phone) toast(`${p.name} подключён`, "ok");
+    if (!p && was?.phone) toast(`${was.phone.name} отключён`);
+    pages.camera?.paintMode();
+    paintStatus();
+  },
+
   quick(kind) {
     if (kind === "shot") return pages.utils.shot();
     if (kind === "files" || kind === "apps") return go(kind);
-    if (!requireDevice()) return;
+    if (!(kind === "camera" && cfg.camera.source === "iphone") && !requireDevice()) return;
     go(kind);
     if (!pages[kind].running) pages[kind].toggle?.() ?? pages[kind].start?.();
   },
@@ -553,11 +602,11 @@ registerPage("camera", {
   running: false,
   camerasFor: null,
   init(el) {
-    const restartKeys = ["camera.facing", "camera.quality", "camera.fps", "camera.bitrate", "camera.torch", "camera.mode"];
+    const restartKeys = ["camera.facing", "camera.quality", "camera.fps", "camera.bitrate", "camera.torch", "camera.mode", "camera.source"];
     let timer = null;
     bindAll(el, (v, path) => {
       if (path === "camera.facing") { cfg.camera.camera_id = ""; save(); $("#camModule").value = ""; }
-      if (path === "camera.mode") this.paintMode();
+      if (path === "camera.mode" || path === "camera.source") this.paintMode();
       if (path === "camera.preview" && !v) this.clearPreview("Превью скрыто");
       if (!this.running) return;
       // Linux streams through scrcpy directly: any change needs a restart.
@@ -589,7 +638,8 @@ registerPage("camera", {
         ? (this.vcam?.device ? "Трансляция → Android Tools Camera" : "Только превью — камера Windows не установлена")
         : s.text;
       $("#camDot").classList.toggle("on", s.state === "running");
-      $("#camFps").textContent = s.state === "running" ? `${Math.round(s.fps)} fps · ${s.native ? "прямой" : "совм."}` : "";
+      const via = s.source === "iphone" ? "iPhone" : s.native ? "прямой" : "совм.";
+      $("#camFps").textContent = s.state === "running" ? `${Math.round(s.fps)} fps · ${via}` : "";
     });
     T.event.listen("camera-error", (e) => toast(e.payload, "err"));
 
@@ -604,6 +654,17 @@ registerPage("camera", {
     return { rotation: c.rotation, mirror: c.mirror, fill: c.fill, preview: c.preview };
   },
   paintMode() {
+    const iphone = cfg.camera.source === "iphone";
+    $("#camModeRow").style.display = iphone ? "none" : "";
+    if (iphone) {
+      const p = pages.devices?.iph?.phone;
+      $("#camModuleRow").style.display = "none";
+      $("#camModeHint").textContent = p
+        ? `${[p.name, p.os].filter(Boolean).join(" · ")}: камера из Safari${p.width ? ` · ${p.width}×${p.height}` : ""}.`
+        : "iPhone не подключён — нажмите «Подключить iPhone» на вкладке «Девайсы».";
+      $("#camTorch").classList.toggle("disabled", !!p && !p.torch);
+      return;
+    }
     const sdk = S.info[S.serial]?.sdk || 0;
     const native = cfg.camera.mode === "native" || (cfg.camera.mode === "auto" && sdk >= 31);
     const hint = $("#camModeHint");
@@ -676,17 +737,21 @@ registerPage("camera", {
     this.checkVcam();
   },
   async start() {
-    const serial = requireDevice();
-    if (!serial) return;
-    if (!S.info[serial]) await refreshInfo(serial);
-    if (this.vcam && this.vcam.supported && !this.vcam.device) toast("Камера Windows не установлена — будет только превью");
     const c = cfg.camera;
+    const iphone = c.source === "iphone";
+    if (iphone && !pages.devices.iph?.phone) {
+      return toast("iPhone не подключён: откройте ссылку или QR-код на вкладке «Девайсы»", "err");
+    }
+    const serial = iphone ? "" : requireDevice();
+    if (!iphone && !serial) return;
+    if (!iphone && !S.info[serial]) await refreshInfo(serial);
+    if (this.vcam && this.vcam.supported && !this.vcam.device) toast("Камера Windows не установлена — будет только превью");
     this.setRunning(true);
     $("#camStatus").textContent = "Подключение…";
     await call("camera_start", {
       settings: {
         serial, sdk: S.info[serial]?.sdk || 0, facing: c.facing, camera_id: c.camera_id, quality: c.quality,
-        fps: c.fps, bitrate: c.bitrate, mode: c.mode, torch: c.torch, live: this.live(),
+        fps: c.fps, bitrate: c.bitrate, mode: c.mode, torch: c.torch, live: this.live(), source: c.source,
       },
     }).catch(() => this.setRunning(false));
   },

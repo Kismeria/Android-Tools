@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Android Tools">
+<meta name="theme-color" content="#000000">
+<title>Android Tools · Camera</title>
+<style>
+  :root { --accent: #3ddc84; --text: #f2f2f2; --dim: #8c8c8c; --panel: rgba(20,20,20,.72); color-scheme: dark; }
+  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html, body { margin: 0; height: 100%; background: #000; color: var(--text); font: 15px/1.4 -apple-system, "SF Pro Text", system-ui, sans-serif; overflow: hidden; }
+  video { position: fixed; inset: 0; width: 100%; height: 100%; object-fit: cover; background: #000; }
+  video.mirror { transform: scaleX(-1); }
+  .top, .bottom { position: fixed; left: 0; right: 0; padding: 14px 16px; display: flex; align-items: center; gap: 10px; }
+  .top { top: 0; padding-top: max(14px, env(safe-area-inset-top)); background: linear-gradient(#000c, #0000); }
+  .bottom { bottom: 0; padding-bottom: max(18px, env(safe-area-inset-bottom)); flex-direction: column; background: linear-gradient(#0000, #000d); }
+  .brand { font-weight: 600; }
+  .pill { margin-left: auto; display: flex; align-items: center; gap: 7px; padding: 6px 12px; border-radius: 16px; background: var(--panel); font-size: 13px; -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: #666; }
+  .dot.ok { background: var(--accent); box-shadow: 0 0 8px var(--accent); }
+  .dot.live { background: #ff3b30; box-shadow: 0 0 8px #ff3b30; animation: blink 1.2s infinite; }
+  @keyframes blink { 50% { opacity: .35; } }
+  .row { display: flex; gap: 10px; width: 100%; }
+  button { flex: 1; height: 50px; border: 0; border-radius: 14px; background: var(--panel); color: var(--text); font: inherit; font-weight: 600; -webkit-backdrop-filter: blur(12px); backdrop-filter: blur(12px); }
+  button.primary { background: var(--accent); color: #000; }
+  button.round { flex: none; width: 50px; font-size: 20px; }
+  button:disabled { opacity: .4; }
+  .hint { color: var(--dim); font-size: 12.5px; text-align: center; }
+  .center { position: fixed; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; padding: 32px; text-align: center; }
+  .center .big { font-size: 20px; font-weight: 600; }
+  .stats { font: 12px ui-monospace, Menlo, monospace; color: var(--dim); }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+<video id="video" autoplay muted playsinline></video>
+<div class="center" id="intro">
+  <div style="font-size:48px">📷</div>
+  <div class="big" data-t="intro">Камера для Android Tools</div>
+  <div class="hint" data-t="introHint">Нажмите кнопку и разрешите доступ к камере. Картинка появится на ПК как «Android Tools Camera».</div>
+</div>
+<div class="top">
+  <span class="brand">Android Tools</span>
+  <span class="pill"><span class="dot" id="dot"></span><span id="state">…</span></span>
+</div>
+<div class="bottom">
+  <div class="stats" id="stats"></div>
+  <div class="row">
+    <button class="round" id="flip" title="Flip">⟲</button>
+    <button class="primary" id="go" data-t="allow">Включить камеру</button>
+    <button class="round" id="torch" title="Torch" disabled>⚡</button>
+  </div>
+  <div class="hint" data-t="keep">Не блокируйте экран. Кабель: включите «Режим модема» на iPhone.</div>
+</div>
+<script>
+"use strict";
+const T = {
+  ru: {}, en: {
+    intro: "Camera for Android Tools", introHint: "Tap the button and allow camera access. The picture appears on the PC as “Android Tools Camera”.",
+    allow: "Start camera", stop: "Stop camera", keep: "Keep the screen on. USB cable: turn on Personal Hotspot on the iPhone.",
+    offline: "No PC connection", waiting: "Connected · waiting for PC", live: "Streaming to PC", ready: "Camera ready",
+    denied: "Camera access denied: Settings → Safari → Camera → Allow", reconnect: "Reconnecting…",
+  },
+};
+const RU = { stop: "Выключить камеру", offline: "Нет связи с ПК", waiting: "Подключено · ждём ПК", live: "Трансляция на ПК",
+  ready: "Камера готова", denied: "Нет доступа к камере: Настройки → Safari → Камера → Разрешить", reconnect: "Переподключение…" };
+const en = !/^ru|^uk|^be|^kk/i.test(navigator.language || "");
+const t = (k) => (en ? T.en[k] : RU[k]) || k;
+if (en) document.querySelectorAll("[data-t]").forEach((el) => { if (T.en[el.dataset.t]) el.textContent = T.en[el.dataset.t]; });
+
+const $ = (id) => document.getElementById(id);
+const video = $("video"), canvas = document.createElement("canvas"), ctx = canvas.getContext("2d");
+const token = new URLSearchParams(location.search).get("k") || "";
+let ws = null, stream = null, sending = false, wake = null;
+let cfg = { facing: "front", width: 1280, height: 720, fps: 30, quality: 0.72, torch: false };
+let frames = 0, bytes = 0, lastStat = performance.now();
+
+function setState(text, kind) {
+  $("state").textContent = text;
+  $("dot").className = "dot " + (kind || "");
+}
+function send(obj) { if (ws && ws.readyState === 1) ws.send(JSON.stringify(obj)); }
+function report() {
+  const track = stream && stream.getVideoTracks()[0];
+  const caps = track && track.getCapabilities ? track.getCapabilities() : {};
+  send({ type: "state", camera: !!stream, width: video.videoWidth, height: video.videoHeight, facing: cfg.facing, torch: !!caps.torch });
+  $("torch").disabled = !caps.torch;
+}
+
+function connect() {
+  ws = new WebSocket(`wss://${location.host}/ws?k=${encodeURIComponent(token)}`);
+  ws.binaryType = "arraybuffer";
+  ws.onopen = () => { setState(sending ? t("live") : t("waiting"), sending ? "live" : "ok"); report(); };
+  ws.onclose = () => { sending = false; setState(t("offline")); setTimeout(connect, 1500); };
+  ws.onmessage = async (e) => {
+    let m;
+    try { m = JSON.parse(e.data); } catch { return; }
+    if (m.cmd === "start") {
+      const restart = !stream || m.facing !== cfg.facing || m.width !== cfg.width || m.height !== cfg.height || m.fps !== cfg.fps;
+      Object.assign(cfg, m);
+      if (restart) await openCamera();
+      await setTorch(cfg.torch);
+      sending = !!stream;
+      if (sending) { setState(t("live"), "live"); lockScreen(); }
+    } else if (m.cmd === "stop") {
+      sending = false;
+      setState(t("waiting"), "ok");
+    }
+  };
+}
+
+async function openCamera() {
+  if (stream) stream.getTracks().forEach((tr) => tr.stop());
+  stream = null;
+  try {
+    stream = await navigator.mediaDevices.getUserMedia({
+      audio: false,
+      video: { facingMode: cfg.facing === "back" ? "environment" : "user", width: { ideal: cfg.width }, height: { ideal: cfg.height }, frameRate: { ideal: cfg.fps } },
+    });
+  } catch (err) {
+    send({ type: "error", text: err.name === "NotAllowedError" ? t("denied") : String(err.message || err) });
+    setState(err.name === "NotAllowedError" ? t("denied") : String(err), "");
+    return;
+  }
+  video.srcObject = stream;
+  video.classList.toggle("mirror", cfg.facing !== "back");
+  await video.play().catch(() => {});
+  $("intro").classList.add("hidden");
+  $("go").textContent = t("stop");
+  $("go").classList.remove("primary");
+  if (!sending) setState(t("ready"), "ok");
+  report();
+}
+
+async function setTorch(on) {
+  const track = stream && stream.getVideoTracks()[0];
+  if (!track || !track.getCapabilities || !track.getCapabilities().torch) return;
+  try { await track.applyConstraints({ advanced: [{ torch: !!on }] }); } catch {}
+}
+
+async function lockScreen() {
+  try { if ("wakeLock" in navigator && !wake) { wake = await navigator.wakeLock.request("screen"); wake.onrelease = () => (wake = null); } } catch {}
+}
+
+// Frame pump: JPEG over the socket, skipping frames while the network is behind.
+function pump() {
+  const delay = 1000 / Math.max(1, cfg.fps);
+  const next = () => setTimeout(pump, delay * 0.5);
+  if (!sending || !stream || !ws || ws.readyState !== 1 || !video.videoWidth || ws.bufferedAmount > 400000) return next();
+  const w = video.videoWidth, h = video.videoHeight;
+  if (canvas.width !== w || canvas.height !== h) { canvas.width = w; canvas.height = h; report(); }
+  ctx.drawImage(video, 0, 0, w, h);
+  const started = performance.now();
+  canvas.toBlob(async (blob) => {
+    if (blob && ws && ws.readyState === 1) {
+      ws.send(await blob.arrayBuffer());
+      frames++; bytes += blob.size;
+    }
+    const now = performance.now();
+    if (now - lastStat > 1000) {
+      $("stats").textContent = `${w}×${h} · ${Math.round(frames * 1000 / (now - lastStat))} fps · ${(bytes * 8 / 1e6 / ((now - lastStat) / 1000)).toFixed(1)} Mbit/s`;
+      frames = 0; bytes = 0; lastStat = now;
+    }
+    setTimeout(pump, Math.max(0, delay - (now - started)));
+  }, "image/jpeg", cfg.quality);
+}
+
+$("go").onclick = async () => {
+  if (stream) {
+    stream.getTracks().forEach((tr) => tr.stop());
+    stream = null; sending = false;
+    video.srcObject = null;
+    $("go").textContent = t("allow");
+    $("go").classList.add("primary");
+    $("intro").classList.remove("hidden");
+    setState(ws && ws.readyState === 1 ? t("waiting") : t("offline"), ws && ws.readyState === 1 ? "ok" : "");
+    report();
+    return;
+  }
+  await openCamera();
+};
+$("flip").onclick = async () => { cfg.facing = cfg.facing === "back" ? "front" : "back"; if (stream) await openCamera(); report(); };
+$("torch").onclick = async () => { cfg.torch = !cfg.torch; await setTorch(cfg.torch); };
+document.addEventListener("visibilitychange", async () => {
+  // iOS stops the camera in the background: resume when the page is shown again.
+  if (document.visibilityState === "visible" && stream && stream.getVideoTracks()[0]?.readyState === "ended") await openCamera();
+  if (document.visibilityState === "visible" && sending) lockScreen();
+});
+
+setState(t("offline"));
+connect();
+pump();
+</script>
+</body>
+</html>

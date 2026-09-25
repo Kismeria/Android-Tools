@@ -263,6 +263,11 @@ input[type=range]::-webkit-slider-thumb {
 .tile:hover { background: var(--hover); border-color: var(--faint); }
 .tile:active { transform: scale(.97); }
 
+.iph-on { display: flex; gap: 16px; align-items: flex-start; }
+.qr { width: 168px; height: 168px; flex: none; border-radius: 10px; overflow: hidden; background: #fff; padding: 6px; }
+.qr svg { width: 100%; height: 100%; display: block; }
+#iphState.ok { color: var(--accent); }
+
 /* ── screen ── */
 .phone-art { font-size: 64px; color: var(--border-hi); text-align: center; padding: 22px 0 18px; }
 .keys { display: grid; grid-template-columns: auto 1fr; gap: 7px 16px; }

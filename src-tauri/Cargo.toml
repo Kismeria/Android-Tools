@@ -19,6 +19,15 @@ arboard = { version = "3", default-features = false, features = ["image-data"] }
 ureq = "2"
 rand = "0.8"
 png = "0.17"
+# iPhone camera over Safari: HTTPS + WebSocket server on the LAN
+rustls = { version = "0.23", default-features = false, features = ["ring", "std", "tls12"] }
+rcgen = "0.13"
+tungstenite = { version = "0.27", default-features = false, features = ["handshake"] }
+qrcode = { version = "0.14", default-features = false, features = ["svg"] }
+if-addrs = "0.13"
+
+[target.'cfg(windows)'.dependencies]
+zune-jpeg = "0.5"
 
 [target.'cfg(windows)'.dependencies.windows]
 version = "0.61"

@@ -1,5 +1,6 @@
 //! Linux camera: scrcpy streams straight into a v4l2loopback device named
 //! "Android Tools Camera" (`--v4l2-sink`), which every Linux app sees as a webcam.
+//! iPhone: JPEG frames from Safari (crate::iphone) go through ffmpeg into the same device.
 use std::io::{BufRead, BufReader, Read};
 use std::path::PathBuf;
 use std::process::{Child, Stdio};
@@ -27,6 +28,9 @@ pub struct Settings {
     pub mode: String,
     pub torch: bool,
     pub live: Live,
+    /// "android" (default) or "iphone".
+    #[serde(default)]
+    pub source: String,
 }
 
 #[derive(Deserialize, Serialize, Clone, Copy, Default)]
@@ -43,6 +47,7 @@ struct Status {
     text: String,
     fps: f32,
     native: bool,
+    source: &'static str,
 }
 
 /// `/dev/videoN` of the loopback device created for Android Tools.
@@ -68,7 +73,11 @@ impl Camera {
         let stop = Arc::new(AtomicBool::new(false));
         let child = Arc::new(Mutex::new(None));
         let (stop2, child2) = (stop.clone(), child.clone());
-        let thread = std::thread::spawn(move || run(app, s, stop2, child2));
+        let thread = if s.source == "iphone" {
+            std::thread::spawn(move || run_iphone(app, s, stop2, child2))
+        } else {
+            std::thread::spawn(move || run(app, s, stop2, child2))
+        };
         Camera { stop, child, thread: Some(thread) }
     }
 
@@ -100,8 +109,9 @@ fn orientation(live: &Live) -> Option<String> {
 
 fn run(app: AppHandle, s: Settings, stop: Arc<AtomicBool>, child_slot: Arc<Mutex<Option<Child>>>) {
     let native = s.mode == "native" || (s.mode == "auto" && s.sdk >= 31);
+    let source = if native { "native" } else { "compat" };
     let status = |state: &'static str, text: &str| {
-        let _ = app.emit("camera-status", Status { state, text: text.into(), fps: 0.0, native });
+        let _ = app.emit("camera-status", Status { state, text: text.into(), fps: 0.0, native, source });
     };
     let error = |text: String| {
         let _ = app.emit("camera-error", text);
@@ -225,6 +235,128 @@ fn run(app: AppHandle, s: Settings, stop: Arc<AtomicBool>, child_slot: Arc<Mutex
         let _ = c.wait();
     }
     status("stopped", "");
+}
+
+/// ffmpeg filter: orientation, then fit (black bars) or fill (crop) into the camera size.
+fn iphone_filter(live: &Live, (w, h): (u32, u32)) -> String {
+    let mut f = Vec::new();
+    match live.rotation % 360 {
+        90 => f.push("transpose=1".to_string()),
+        180 => f.push("hflip,vflip".to_string()),
+        270 => f.push("transpose=2".to_string()),
+        _ => {}
+    }
+    if live.mirror {
+        f.push("hflip".into());
+    }
+    if live.fill {
+        f.push(format!("scale={w}:{h}:force_original_aspect_ratio=increase,crop={w}:{h}"));
+    } else {
+        f.push(format!("scale={w}:{h}:force_original_aspect_ratio=decrease,pad={w}:{h}:(ow-iw)/2:(oh-ih)/2"));
+    }
+    f.push("format=yuv420p".into());
+    f.join(",")
+}
+
+fn run_iphone(app: AppHandle, s: Settings, stop: Arc<AtomicBool>, child_slot: Arc<Mutex<Option<Child>>>) {
+    use std::io::Write;
+    use std::sync::atomic::AtomicU32;
+    let emit = |state: &'static str, text: &str, fps: f32| {
+        let _ = app.emit("camera-status", Status { state, text: text.into(), fps, native: false, source: "iphone" });
+    };
+    let error = |text: String| {
+        let _ = app.emit("camera-error", text);
+    };
+
+    let result: Res<()> = (|| {
+        emit("connecting", "Ждём iPhone…", 0.0);
+        if !crate::iphone::connected() {
+            return Err("iPhone не подключён: откройте ссылку или QR-код на вкладке «Девайсы»".into());
+        }
+        let device = find_device().ok_or("Камера не установлена")?;
+        let size = match s.quality {
+            480 => (848, 480),
+            1080 => (1920, 1080),
+            _ => (1280, 720),
+        };
+        let mut child = hidden("ffmpeg")
+            .args(["-hide_banner", "-loglevel", "error", "-fflags", "nobuffer", "-f", "mjpeg"])
+            .args(["-framerate", &s.fps.to_string(), "-i", "-", "-vf", &iphone_filter(&s.live, size)])
+            .args(["-f", "v4l2", &device.display().to_string()])
+            .stdin(Stdio::piped())
+            .stdout(Stdio::null())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|_| "Нужен ffmpeg (пакет ffmpeg)".to_string())?;
+        let mut stdin = child.stdin.take().ok_or("ffmpeg")?;
+        let log = Arc::new(Mutex::new(String::new()));
+        if let Some(err) = child.stderr.take() {
+            let log = log.clone();
+            std::thread::spawn(move || {
+                for line in BufReader::new(err).lines().map_while(Result::ok) {
+                    *log.lock().unwrap() = line;
+                }
+            });
+        }
+        *child_slot.lock().unwrap() = Some(child);
+
+        let frames = Arc::new(AtomicU32::new(0));
+        let (counter, preview_app, preview) = (frames.clone(), app.clone(), s.live.preview);
+        let mut last_preview = Instant::now() - Duration::from_secs(1);
+        crate::iphone::set_sink(Some(Box::new(move |data: &[u8]| {
+            if stdin.write_all(data).is_ok() {
+                counter.fetch_add(1, Ordering::Relaxed);
+            }
+            if preview && last_preview.elapsed() >= Duration::from_millis(100) {
+                last_preview = Instant::now();
+                use base64::Engine;
+                let b64 = base64::engine::general_purpose::STANDARD.encode(data);
+                let _ = preview_app.emit("camera-frame", format!("data:image/jpeg;base64,{b64}"));
+            }
+        })));
+        let (qw, qh) = match s.quality { 480 => (640, 480), 1080 => (1920, 1080), _ => (1280, 720) };
+        crate::iphone::send(serde_json::json!({
+            "cmd": "start", "facing": s.facing, "width": qw, "height": qh, "fps": s.fps,
+            "quality": if s.bitrate >= 10 { 0.85 } else if s.bitrate >= 5 { 0.75 } else { 0.6 },
+            "torch": s.torch,
+        }));
+        emit("running", "Трансляция", 0.0);
+
+        let mut tick = Instant::now();
+        let mut last = 0;
+        loop {
+            if stop.load(Ordering::SeqCst) {
+                return Ok(());
+            }
+            if !crate::iphone::connected() {
+                return Err("iPhone отключился".into());
+            }
+            if matches!(child_slot.lock().unwrap().as_mut().map(|c| c.try_wait()), Some(Ok(Some(_)))) {
+                let msg = log.lock().unwrap().clone();
+                return Err(if msg.is_empty() { "ffmpeg завершился".into() } else { format!("ffmpeg: {msg}") });
+            }
+            if tick.elapsed() >= Duration::from_secs(1) {
+                let now = frames.load(Ordering::Relaxed);
+                emit("running", "Трансляция", (now - last) as f32 / tick.elapsed().as_secs_f32());
+                last = now;
+                tick = Instant::now();
+            }
+            std::thread::sleep(Duration::from_millis(150));
+        }
+    })();
+
+    crate::iphone::set_sink(None);
+    crate::iphone::send(serde_json::json!({ "cmd": "stop" }));
+    if let Err(e) = result {
+        if !stop.load(Ordering::SeqCst) {
+            error(e);
+        }
+    }
+    if let Some(mut c) = child_slot.lock().unwrap().take() {
+        let _ = c.kill();
+        let _ = c.wait();
+    }
+    emit("stopped", "", 0.0);
 }
 
 pub mod install {

@@ -63,6 +63,32 @@
             </div>
             <div class="faint">Android 11+: Для разработчиков → Отладка по Wi‑Fi → Сопряжение по коду</div>
           </div>
+          <div class="card iph" id="iphCard">
+            <div class="row" style="margin-bottom:12px">
+              <i class="ic hint" style="font-size:15px">&#xE8EA;</i><span class="big">iPhone</span>
+              <span class="state hint" id="iphState">Не подключён</span>
+              <div class="grow"></div>
+              <button class="btn primary small" id="iphToggle"><i class="ic">&#xE71B;</i><span>Подключить iPhone</span></button>
+            </div>
+            <div class="iph-off" id="iphOff">
+              <div class="faint">iPhone работает как веб-камера без установки приложений: камера открывается в Safari и передаётся на ПК по Wi‑Fi. Подойдёт и любой другой телефон с браузером.</div>
+            </div>
+            <div class="iph-on" id="iphOn" style="display:none">
+              <div class="qr" id="iphQr"></div>
+              <div class="stack grow" style="gap:10px">
+                <div class="steps">
+                  <div class="step"><b>1</b><div><div>Одна сеть</div><div class="hint">iPhone и ПК в одной Wi‑Fi сети. По кабелю: на iPhone включите «Режим модема»</div></div></div>
+                  <div class="step"><b>2</b><div><div>Наведите камеру iPhone на QR-код</div><div class="hint">Откроется Safari. Сертификат свой, поэтому: «Подробнее» → «Посетить этот веб-сайт»</div></div></div>
+                  <div class="step"><b>3</b><div><div>«Включить камеру» на iPhone</div><div class="hint">Затем на вкладке «Камера» выберите источник iPhone</div></div></div>
+                </div>
+                <div class="row">
+                  <select id="iphUrl" class="grow mono"></select>
+                  <button class="btn small icon" id="iphCopy" title="Копировать ссылку"><i class="ic">&#xE8C8;</i></button>
+                </div>
+                <div class="faint">Если Windows спросит доступ к сети — разрешите для частных сетей.</div>
+              </div>
+            </div>
+          </div>
           <div class="card grow-card">
             <div class="section">Как подключить</div>
             <div class="steps">
@@ -210,13 +236,17 @@
         <div class="stack">
           <div class="card">
             <div class="section">Источник</div>
+            <div class="line"><span class="label" style="width:80px">Телефон</span>
+              <div class="seg" data-bind="camera.source">
+                <button data-v="android">Android</button><button data-v="iphone">iPhone</button>
+              </div></div>
             <div class="line"><span class="label" style="width:80px">Камера</span>
               <div class="seg" data-bind="camera.facing">
                 <button data-v="front">Фронтальная</button><button data-v="back">Основная</button>
               </div></div>
             <div class="line" id="camModuleRow" style="display:none"><span class="label" style="width:80px">Модуль</span>
               <select id="camModule" class="grow"></select></div>
-            <div class="line"><span class="label" style="width:80px">Режим</span>
+            <div class="line" id="camModeRow"><span class="label" style="width:80px">Режим</span>
               <div class="seg" data-bind="camera.mode">
                 <button data-v="auto">Авто</button><button data-v="native">Прямой</button><button data-v="compat">Совм.</button>
               </div></div>

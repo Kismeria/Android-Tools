@@ -4,6 +4,7 @@ mod adb;
 #[cfg_attr(not(windows), path = "camera_linux.rs")]
 mod camera;
 mod commands;
+mod iphone;
 mod mic;
 mod mirror;
 #[cfg_attr(not(windows), path = "tools_linux.rs")]
@@ -139,6 +140,9 @@ fn main() {
             commands::camera_status,
             commands::camera_install,
             commands::camera_remove,
+            commands::iphone_start,
+            commands::iphone_stop,
+            commands::iphone_status,
             commands::mic_start,
             commands::mic_stop,
             commands::mic_live,
