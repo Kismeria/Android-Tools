@@ -34,6 +34,10 @@ pub struct Settings {
     /// Target latency of the output device in milliseconds.
     pub buffer: u32,
     pub live: Live,
+    /// Chosen by the UI and echoed in status events: the previous stream's late "stopped"
+    /// after a restart must not switch the new one off.
+    #[serde(default)]
+    pub session: u64,
 }
 
 /// Settings applied without restarting the stream.
@@ -57,6 +61,7 @@ struct Status {
     state: &'static str, // connecting | running | stopped
     text: String,
     device: bool,
+    session: u64,
 }
 
 #[derive(Serialize, Clone)]
@@ -128,7 +133,7 @@ struct Ctx {
 
 impl Ctx {
     fn status(&self, state: &'static str, text: impl Into<String>, device: bool) {
-        let _ = self.app.emit("mic-status", Status { state, text: text.into(), device });
+        let _ = self.app.emit("mic-status", Status { state, text: text.into(), device, session: self.s.session });
     }
 
     fn error(&self, text: impl Into<String>) {

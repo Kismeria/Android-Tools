@@ -67,9 +67,7 @@ fn ensure_webview2() -> bool {
         )
     };
     if answer == IDYES {
-        let _ = util::hidden("cmd")
-            .args(["/c", "start", "", "https://go.microsoft.com/fwlink/p/?LinkId=2124703"])
-            .spawn();
+        let _ = util::shell_open("https://go.microsoft.com/fwlink/p/?LinkId=2124703", "");
     }
     false
 }
@@ -103,8 +101,12 @@ fn main() {
             if let Some(w) = app.get_webview_window("main") {
                 paint_titlebar(&w, true, "#000000", "#1b1b1b", "#f2f2f2");
             }
+            // The adb server takes a few seconds to start and find USB phones: start it while the
+            // window is still loading, so the first device list is ready sooner.
             std::thread::spawn(|| {
-                let _ = tools::ensure();
+                if tools::ensure().is_ok() {
+                    let _ = adb::run_lenient(None, &["start-server"], 20);
+                }
             });
             Ok(())
         })
@@ -145,6 +147,7 @@ fn main() {
             commands::iphone_start,
             commands::iphone_stop,
             commands::iphone_status,
+            commands::open_firewall,
             commands::mic_start,
             commands::mic_stop,
             commands::mic_live,

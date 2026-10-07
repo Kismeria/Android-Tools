@@ -39,6 +39,7 @@ use crate::util::{default_save_dir, folder};
 
 // ── app / tools ──
 
+/// Startup info. Tool versions (`tools_info`) start adb and scrcpy, so they load with Settings.
 #[tauri::command]
 pub async fn app_info() -> Res<Value> {
     blocking(|| {
@@ -46,7 +47,6 @@ pub async fn app_info() -> Res<Value> {
         Ok(json!({
             "version": env!("CARGO_PKG_VERSION"),
             "save_dir": default_save_dir().display().to_string(),
-            "tools": tools::info(),
         }))
     })
     .await
@@ -113,14 +113,7 @@ pub async fn open_external(url: String) -> Res<()> {
     if !url.starts_with("https://") {
         return Err("Неверная ссылка".into());
     }
-    blocking(move || {
-        #[cfg(windows)]
-        hidden("cmd").args(["/c", "start", "", &url]).spawn().map_err(err)?;
-        #[cfg(not(windows))]
-        hidden("xdg-open").arg(&url).spawn().map_err(err)?;
-        Ok(())
-    })
-    .await
+    blocking(move || crate::util::shell_open(&url, "")).await
 }
 
 // ── devices ──
@@ -173,7 +166,8 @@ pub async fn mirror_start(
     let record_dir = PathBuf::from(save_dir).join(folder("Записи", "Recordings")).display().to_string();
     let args = mirror::build_args(&serial, &settings, &title, &record_dir);
     let sound = mirror::needs_sndcpy(&settings);
-    let mut m = Mirror::default();
+    // `start` closes a window that is still open; a fresh Mirror would leave it running unseen.
+    let mut m = std::mem::take(&mut *state.mirror.lock().unwrap());
     let (m, warning) = blocking(move || {
         m.start(args)?;
         let warning = if sound { m.start_sound(&serial).err() } else { None };
@@ -282,6 +276,16 @@ pub fn iphone_stop() {
 #[tauri::command]
 pub fn iphone_status() -> crate::iphone::Status {
     crate::iphone::status()
+}
+
+/// Windows "Allow an app through firewall" page, for an iPhone that cannot open the page. The
+/// app does not change firewall rules itself: programs that do look suspicious to antivirus.
+#[tauri::command]
+pub async fn open_firewall() -> Res<()> {
+    if !cfg!(windows) {
+        return Err("Только для Windows".into());
+    }
+    blocking(|| crate::util::shell_open("control.exe", "/name Microsoft.WindowsFirewall /page pageConfigureApps")).await
 }
 
 // ── microphone ──

@@ -2,6 +2,7 @@
 use std::fs;
 use std::io::{Cursor, Read};
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 
 use serde::Serialize;
@@ -11,6 +12,8 @@ use crate::util::{data_dir, err, hidden, Res};
 static PLATFORM_TOOLS_ZIP: &[u8] = include_bytes!("../embed/platform-tools.zip");
 static SCRCPY_ZIP: &[u8] = include_bytes!("../embed/scrcpy.zip");
 static UNPACK_LOCK: Mutex<()> = Mutex::new(());
+/// Set once the tools are on disk: every adb call checks, the disk is looked at only once.
+static READY: AtomicBool = AtomicBool::new(false);
 
 pub fn bin_dir() -> PathBuf {
     data_dir().join("bin")
@@ -23,7 +26,16 @@ fn extract(zip: impl Read + std::io::Seek, dest: &Path) -> Res<()> {
 
 /// Unpack the embedded tools if this exe carries a build that is not on disk yet.
 pub fn ensure() -> Res<()> {
+    if READY.load(Ordering::Acquire) {
+        return Ok(());
+    }
     let _guard = UNPACK_LOCK.lock().unwrap();
+    unpack()?;
+    READY.store(true, Ordering::Release);
+    Ok(())
+}
+
+fn unpack() -> Res<()> {
     let dir = bin_dir();
     fs::create_dir_all(&dir).map_err(err)?;
     let stamp = dir.join(".embedded");

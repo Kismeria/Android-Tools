@@ -18,6 +18,29 @@ pub fn hidden(program: impl AsRef<OsStr>) -> Command {
     cmd
 }
 
+/// Opens a link or a system page the way Explorer does. Windows: ShellExecute rather than
+/// `cmd /c start` — a hidden command shell is one of the things antivirus heuristics flag.
+#[cfg(windows)]
+pub fn shell_open(target: &str, params: &str) -> Res<()> {
+    use windows::core::{w, HSTRING, PCWSTR};
+    use windows::Win32::UI::Shell::ShellExecuteW;
+    use windows::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL;
+    let (target, params) = (HSTRING::from(target), HSTRING::from(params));
+    let params = if params.is_empty() { PCWSTR::null() } else { PCWSTR(params.as_ptr()) };
+    let r = unsafe { ShellExecuteW(None, w!("open"), &target, params, PCWSTR::null(), SW_SHOWNORMAL) };
+    // Values above 32 mean success.
+    if r.0 as isize > 32 {
+        Ok(())
+    } else {
+        Err(format!("ShellExecute: {}", r.0 as isize))
+    }
+}
+
+#[cfg(not(windows))]
+pub fn shell_open(target: &str, _params: &str) -> Res<()> {
+    hidden("xdg-open").arg(target).spawn().map(|_| ()).map_err(err)
+}
+
 fn home() -> PathBuf {
     std::env::var_os(if cfg!(windows) { "USERPROFILE" } else { "HOME" }).map(PathBuf::from).unwrap_or_default()
 }

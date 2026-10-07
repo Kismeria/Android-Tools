@@ -128,16 +128,43 @@ pub fn devices() -> Res<Vec<Device>> {
         .collect())
 }
 
+/// Shell lines printing the phone's IPv4 addresses, read by `wifi_ip`.
+const IP_SCRIPT: &str = "ip -o -f inet addr show 2>/dev/null; echo '@'; ip -f inet addr show wlan0 2>/dev/null | grep inet";
+
+/// The Wi‑Fi address from `IP_SCRIPT` output. `ip -o` lines look like
+/// `30: wlan0    inet 192.168.1.23/24 brd … scope global wlan0`; mobile data (rmnet, ccmni) and
+/// VPN interfaces are skipped. Phones without `ip -o` fall back to plain wlan0 output.
+fn wifi_ip(text: &str) -> String {
+    let (listed, wlan0) = text.split_once('@').unwrap_or((text, ""));
+    listed
+        .lines()
+        .filter_map(|l| {
+            let t: Vec<&str> = l.split_whitespace().collect();
+            (t.len() >= 4 && t[2] == "inet").then(|| (t[1].trim_end_matches(':'), t[3]))
+        })
+        .find(|(iface, _)| ["wlan", "swlan", "wifi", "eth"].iter().any(|p| iface.starts_with(p)))
+        .map(|(_, addr)| addr)
+        .or_else(|| find(wlan0, "inet "))
+        .and_then(|addr| addr.split('/').next())
+        .filter(|ip| !ip.is_empty() && !ip.starts_with("127."))
+        .unwrap_or_default()
+        .to_string()
+}
+
 pub fn device_info(serial: &str) -> Res<Value> {
-    let script = "getprop ro.product.manufacturer; echo '#'; getprop ro.product.model; echo '#';\
+    // `cmd window size` answers at once; `wm size` starts a Java VM on old Android versions.
+    let script = format!(
+        "getprop ro.product.manufacturer; echo '#'; getprop ro.product.model; echo '#';\
         getprop ro.build.version.release; echo '#'; getprop ro.build.version.sdk; echo '#';\
         dumpsys battery | grep -E ' level:| status:'; echo '#';\
-        df -k /data | tail -1; echo '#'; wm size; echo '#';\
-        ip -f inet addr show wlan0 2>/dev/null | grep inet; echo '#';\
-        getprop ro.product.marketname; getprop ro.config.marketing_name";
-    let out = shell_lenient(serial, script)?;
+        df -k /data | tail -1; echo '#';\
+        s=$(cmd window size 2>/dev/null); case \"$s\" in *size:*) echo \"$s\";; *) wm size;; esac; echo '#';\
+        {IP_SCRIPT}; echo '#';\
+        getprop ro.product.marketname; getprop ro.config.marketing_name; echo '#'; getprop ro.serialno"
+    );
+    let out = shell_lenient(serial, &script)?;
     let mut p: Vec<String> = out.split('#').map(|s| s.trim().to_string()).collect();
-    p.resize(9, String::new());
+    p.resize(10, String::new());
 
     let mut brand = p[0].to_lowercase();
     if let Some(first) = brand.get_mut(0..1) {
@@ -152,7 +179,7 @@ pub fn device_info(serial: &str) -> Res<Value> {
         (0, 0)
     };
     let resolution = find(&p[6], "size:").unwrap_or("").replace('x', "×");
-    let ip = find(&p[7], "inet ").map(|v| v.split('/').next().unwrap_or("").to_string()).unwrap_or_default();
+    let ip = wifi_ip(&p[7]);
     let market = p[8].lines().map(str::trim).find(|l| !l.is_empty()).unwrap_or("");
     let name = if market.is_empty() {
         format!("{brand} {}", p[1])
@@ -173,6 +200,8 @@ pub fn device_info(serial: &str) -> Res<Value> {
         "storage_used": used,
         "resolution": resolution,
         "ip": ip,
+        // The same phone over USB and Wi‑Fi has two serials but one ro.serialno.
+        "hw": p[9],
     }))
 }
 
@@ -196,14 +225,21 @@ pub fn pair(address: &str, code: &str) -> Res<String> {
     Ok(out)
 }
 
+/// USB → Wi‑Fi: adbd listens on port 5555 and the PC connects to the phone's address.
 pub fn to_wifi(serial: &str) -> Res<String> {
-    let info = device_info(serial)?;
-    let ip = info["ip"].as_str().unwrap_or("").to_string();
+    let out = shell_lenient(serial, &format!("getprop service.adb.tcp.port; echo '#'; {IP_SCRIPT}"))?;
+    let (port, ips) = out.split_once('#').unwrap_or(("", out.as_str()));
+    let ip = wifi_ip(ips);
     if ip.is_empty() {
         return Err("Телефон не в Wi‑Fi сети".into());
     }
-    run(Some(serial), &["tcpip", "5555"], 15)?;
     let address = format!("{ip}:5555");
+    // Still listening since an earlier switch: connect without restarting adbd (that would
+    // drop the USB connection and everything running over it for a moment).
+    if port.trim() == "5555" && connect(&address).is_ok() {
+        return Ok(address);
+    }
+    run(Some(serial), &["tcpip", "5555"], 15)?;
     let mut last = String::new();
     for _ in 0..10 {
         std::thread::sleep(Duration::from_millis(800));
@@ -239,8 +275,11 @@ pub fn packages(serial: &str, kind: &str) -> Res<Value> {
         "all" => "",
         _ => " -3",
     };
-    let listed = package_names(&shell(serial, &format!("pm list packages{flag}"))?);
-    let disabled: HashSet<String> = package_names(&shell_lenient(serial, "pm list packages -d")?).into_iter().collect();
+    // One round trip: `pm` starts a Java VM on older phones.
+    let out = shell(serial, &format!("pm list packages{flag}; echo '#'; pm list packages -d"))?;
+    let (listed, disabled) = out.split_once('#').unwrap_or((out.as_str(), ""));
+    let listed = package_names(listed);
+    let disabled: HashSet<String> = package_names(disabled).into_iter().collect();
     let mut items: Vec<Value> = listed
         .into_iter()
         .map(|p| json!({ "package": p, "disabled": disabled.contains(&p) }))
@@ -493,4 +532,21 @@ pub fn list_cameras(serial: &str) -> Res<Value> {
         })
         .collect();
     Ok(Value::Array(cams))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::wifi_ip;
+
+    #[test]
+    fn wifi_address() {
+        let listed = "1: lo    inet 127.0.0.1/8 scope host lo\\       valid_lft forever preferred_lft forever\n\
+                      12: rmnet_data0    inet 10.120.4.7/30 scope global rmnet_data0\\       valid_lft forever\n\
+                      30: wlan0    inet 192.168.1.23/24 brd 192.168.1.255 scope global wlan0\\       valid_lft forever\n@";
+        assert_eq!(wifi_ip(listed), "192.168.1.23");
+        // No `ip -o`: plain wlan0 output.
+        assert_eq!(wifi_ip("@\n    inet 10.0.0.5/24 brd 10.0.0.255 scope global wlan0"), "10.0.0.5");
+        // Mobile data only: not on Wi‑Fi.
+        assert_eq!(wifi_ip("12: rmnet_data0    inet 10.120.4.7/30 scope global rmnet_data0\n@"), "");
+    }
 }

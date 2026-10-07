@@ -1,6 +1,9 @@
 name: Arch Linux package
 
 on:
+  # A v* tag builds and publishes (a pre-release if it is new); see windows.yml.
+  push:
+    tags: ["v*"]
   release:
     types: [published]
   workflow_dispatch:
@@ -20,9 +23,16 @@ jobs:
       - name: Install build dependencies
         run: |
           pacman -Syu --noconfirm --needed base-devel git github-cli rust npm nodejs \
-            webkit2gtk-4.1 gtk3 libsoup3 librsvg openssl android-tools scrcpy polkit xdg-utils
+            webkit2gtk-4.1 gtk3 libsoup3 librsvg openssl android-tools scrcpy polkit xdg-utils python
 
       - uses: actions/checkout@v4
+
+      # The ignored iPhone test runs the HTTPS server end to end against tests/iphone_client.py;
+      # the other ignored tests need a phone or a sound card.
+      - name: Unit tests
+        run: |
+          cargo test --manifest-path src-tauri/Cargo.toml
+          cargo test --manifest-path src-tauri/Cargo.toml iphone::tests -- --ignored --nocapture
 
       - name: Build package
         run: |
@@ -57,9 +67,11 @@ jobs:
           if-no-files-found: ignore
 
       - name: Attach to release
-        if: github.event_name == 'release' || github.event.inputs.tag != ''
+        if: github.event_name == 'release' || github.ref_type == 'tag' || github.event.inputs.tag != ''
         env:
           GH_TOKEN: ${{ github.token }}
-          TAG: ${{ github.event.release.tag_name || github.event.inputs.tag }}
+          TAG: ${{ github.event.release.tag_name || github.event.inputs.tag || github.ref_name }}
         run: |
+          gh release view "$TAG" -R "$GITHUB_REPOSITORY" >/dev/null 2>&1 \
+            || gh release create "$TAG" --prerelease --verify-tag --notes-from-tag -R "$GITHUB_REPOSITORY" || true
           gh release upload "$TAG" packaging/arch/android-tools-gui-x86_64.pkg.tar.zst             packaging/arch/android-tools-gui-*-x86_64.pkg.tar.zst --clobber -R "$GITHUB_REPOSITORY"
