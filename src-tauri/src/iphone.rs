@@ -21,7 +21,7 @@ use tauri::{AppHandle, Emitter};
 use crate::util::{data_dir, err, Res};
 
 static PAGE: &str = include_str!("iphone.html");
-pub const PORTS: [u16; 4] = [8443, 8444, 8445, 8446];
+const PORTS: [u16; 4] = [8443, 8444, 8445, 8446];
 /// Longest wait of a poll; the page polls again at once.
 const POLL: Duration = Duration::from_secs(8);
 /// A page not heard from for this long is gone.
@@ -51,8 +51,6 @@ pub struct Status {
     /// QR code (SVG) for each of `urls`.
     pub qrs: Vec<String>,
     pub phone: Option<Phone>,
-    /// Windows Firewall has no rule for the server yet, so the phone may not reach the PC.
-    pub firewall: bool,
 }
 
 /// The phone page talking to the PC.
@@ -83,7 +81,6 @@ struct Server {
     /// The running camera's start command, replayed to a page that (re)connects.
     wanted: Mutex<Option<String>>,
     sink: Mutex<Option<Sink>>,
-    firewall: AtomicBool,
 }
 
 static SERVER: Mutex<Option<Arc<Server>>> = Mutex::new(None);
@@ -99,9 +96,8 @@ pub fn status() -> Status {
             urls: s.urls.clone(),
             qrs: s.qrs.clone(),
             phone: s.session.lock().unwrap().as_ref().filter(|x| x.alive()).map(|x| x.phone.clone()),
-            firewall: s.firewall.load(Ordering::Relaxed),
         },
-        None => Status { running: false, urls: Vec::new(), qrs: Vec::new(), phone: None, firewall: false },
+        None => Status { running: false, urls: Vec::new(), qrs: Vec::new(), phone: None },
     }
 }
 
@@ -200,7 +196,6 @@ pub fn start(app: Option<AppHandle>) -> Res<Status> {
         wake: Condvar::new(),
         wanted: Mutex::new(None),
         sink: Mutex::new(None),
-        firewall: AtomicBool::new(!firewall::allowed()),
     });
     *SERVER.lock().unwrap() = Some(server.clone());
 
@@ -237,16 +232,6 @@ pub fn start(app: Option<AppHandle>) -> Res<Status> {
             }
         }
     });
-    Ok(status())
-}
-
-/// Adds the Windows Firewall rule (asks for administrator rights) and reports the new state.
-pub fn allow_firewall() -> Res<Status> {
-    firewall::allow()?;
-    if let Some(s) = current() {
-        s.firewall.store(!firewall::allowed(), Ordering::Relaxed);
-        emit(&s);
-    }
     Ok(status())
 }
 
@@ -600,85 +585,6 @@ fn describe(ua: &str) -> (String, String) {
         return ("Android".into(), format!("Android {v}"));
     }
     ("Телефон".into(), String::new())
-}
-
-// ── Windows Firewall ──
-
-/// A new program that listens on the LAN is blocked by Windows Firewall until the user allows
-/// it, and only for the network types ticked in Windows' prompt (home Wi‑Fi is often "public"),
-/// so the phone could not even open the page. One elevated call opens the server ports for all
-/// network types and drops the block rules Windows made for this program.
-#[cfg(windows)]
-pub mod firewall {
-    use std::os::windows::process::CommandExt;
-
-    use crate::util::{hidden, Res};
-
-    const RULE: &str = "AndroidTools-iPhone";
-
-    pub fn allowed() -> bool {
-        hidden("netsh")
-            .args(["advfirewall", "firewall", "show", "rule", &format!("name={RULE}")])
-            .output()
-            .map(|o| o.status.success())
-            .unwrap_or(true)
-    }
-
-    pub fn allow() -> Res<()> {
-        crate::camera::install::run_elevated("--iphone-firewall")
-    }
-
-    /// `--iphone-firewall`, started elevated by `allow`.
-    pub fn handle_cli(args: &[String]) -> Option<i32> {
-        if !args.iter().any(|a| a == "--iphone-firewall") {
-            return None;
-        }
-        let result = add_rule();
-        crate::camera::install::save_result(&result);
-        Some(if result.is_ok() { 0 } else { 1 })
-    }
-
-    fn netsh(args: &[&str]) -> std::io::Result<std::process::Output> {
-        hidden("netsh").args(["advfirewall", "firewall"]).args(args).output()
-    }
-
-    fn add_rule() -> Res<()> {
-        let exe = std::env::current_exe().map_err(|e| e.to_string())?;
-        // Block rules from a dismissed prompt win over any allow rule.
-        let _ = hidden("netsh")
-            .args(["advfirewall", "firewall", "delete", "rule", "name=all", "dir=in"])
-            .raw_arg(format!("program=\"{}\"", exe.display()))
-            .output();
-        let _ = netsh(&["delete", "rule", &format!("name={RULE}")]);
-        let ports = format!("localport={}-{}", super::PORTS[0], super::PORTS[super::PORTS.len() - 1]);
-        let out = netsh(&[
-            "add", "rule", &format!("name={RULE}"), "dir=in", "action=allow", "protocol=TCP", &ports, "profile=any",
-            "enable=yes",
-        ])
-        .map_err(|e| format!("netsh: {e}"))?;
-        if out.status.success() {
-            Ok(())
-        } else {
-            Err(format!("Брандмауэр Windows: код {}", out.status.code().unwrap_or(-1)))
-        }
-    }
-}
-
-#[cfg(not(windows))]
-pub mod firewall {
-    use crate::util::Res;
-
-    pub fn allowed() -> bool {
-        true
-    }
-
-    pub fn allow() -> Res<()> {
-        Ok(())
-    }
-
-    pub fn handle_cli(_args: &[String]) -> Option<i32> {
-        None
-    }
 }
 
 #[cfg(test)]

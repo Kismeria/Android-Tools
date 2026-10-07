@@ -67,9 +67,7 @@ fn ensure_webview2() -> bool {
         )
     };
     if answer == IDYES {
-        let _ = util::hidden("cmd")
-            .args(["/c", "start", "", "https://go.microsoft.com/fwlink/p/?LinkId=2124703"])
-            .spawn();
+        let _ = util::shell_open("https://go.microsoft.com/fwlink/p/?LinkId=2124703", "");
     }
     false
 }
@@ -89,9 +87,6 @@ fn main() {
         std::process::exit(code);
     }
     if let Some(code) = camera::install::handle_cli(&args) {
-        std::process::exit(code);
-    }
-    if let Some(code) = iphone::firewall::handle_cli(&args) {
         std::process::exit(code);
     }
     update::cleanup();
@@ -152,7 +147,7 @@ fn main() {
             commands::iphone_start,
             commands::iphone_stop,
             commands::iphone_status,
-            commands::iphone_firewall,
+            commands::open_firewall,
             commands::mic_start,
             commands::mic_stop,
             commands::mic_live,

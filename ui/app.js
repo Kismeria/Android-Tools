@@ -397,9 +397,10 @@ registerPage("devices", {
       cfg.iphone.enabled = true;
       save();
       this.iphPaint(st);
-      if (st.firewall) this.firewall(true);
     };
-    $("#iphFirewallFix").onclick = () => this.firewall(false);
+    // Windows asks on the first start whether the app may use the network; a phone that
+    // still cannot open the page is usually blocked there.
+    $("#iphFirewallFix").onclick = () => call("open_firewall", {}, { busy: false });
     $("#iphUrl").onchange = (e) => ($("#iphQr").innerHTML = this.iph?.qrs[e.target.selectedIndex] || "");
     $("#iphCopy").onclick = () => {
       navigator.clipboard.writeText($("#iphUrl").value);
@@ -410,21 +411,12 @@ registerPage("devices", {
     const first = cfg.iphone.enabled ? call("iphone_start", {}, { busy: false, quiet: true }) : call("iphone_status", {}, { busy: false, quiet: true });
     first.then((st) => this.iphPaint(st)).catch(() => {});
   },
-  // Windows Firewall blocks the phone until the server's ports are allowed (admin rights, once).
-  async firewall(ask) {
-    if (ask && !(await confirmBox("Разрешить iPhone подключаться?",
-      "Брандмауэр Windows не пускает телефон к программе, и страница на iPhone не откроется. Windows запросит права администратора, чтобы открыть порты 8443–8446 для всех сетей.",
-      "Разрешить", "primary"))) return;
-    const st = await call("iphone_firewall");
-    this.iphPaint(st);
-    if (!st.firewall) toast("Брандмауэр: iPhone может подключаться", "ok");
-  },
   iphPaint(st) {
     const was = this.iph;
     this.iph = st;
     $("#iphOn").style.display = st.running ? "" : "none";
     $("#iphOff").style.display = st.running ? "none" : "";
-    $("#iphFirewall").style.display = st.running && st.firewall ? "" : "none";
+    $("#iphFirewall").style.display = st.running && IS_WINDOWS && !st.phone ? "" : "none";
     const b = $("#iphToggle");
     b.className = `btn small ${st.running ? "" : "primary"}`;
     b.innerHTML = st.running ? `<i class="ic">&#xE71A;</i><span>Выключить</span>` : `<i class="ic">&#xE71B;</i><span>Подключить iPhone</span>`;

@@ -91,12 +91,11 @@
                   <select id="iphUrl" class="grow mono"></select>
                   <button class="btn small icon" id="iphCopy" title="Копировать ссылку"><i class="ic">&#xE8C8;</i></button>
                 </div>
-                <div class="row" id="iphFirewall" style="display:none">
-                  <i class="ic warn">&#xE7EF;</i>
-                  <span class="hint grow">Брандмауэр Windows не пускает iPhone к ПК</span>
-                  <button class="btn small primary" id="iphFirewallFix">Разрешить</button>
+                <div class="row" id="iphFirewall" style="display:none;align-items:flex-start">
+                  <i class="ic warn" style="margin-top:2px">&#xE7EF;</i>
+                  <span class="hint grow">Страница не открывается? Разрешите «Android Tools» в брандмауэре Windows для частной и общественной сети. Ещё причины: гостевая сеть Wi‑Fi или VPN на iPhone.</span>
+                  <button class="btn small" id="iphFirewallFix">Брандмауэр</button>
                 </div>
-                <div class="faint">Страница не открывается — проверьте, что iPhone не в гостевой сети и VPN выключен.</div>
               </div>
             </div>
           </div>

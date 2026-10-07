@@ -113,14 +113,7 @@ pub async fn open_external(url: String) -> Res<()> {
     if !url.starts_with("https://") {
         return Err("Неверная ссылка".into());
     }
-    blocking(move || {
-        #[cfg(windows)]
-        hidden("cmd").args(["/c", "start", "", &url]).spawn().map_err(err)?;
-        #[cfg(not(windows))]
-        hidden("xdg-open").arg(&url).spawn().map_err(err)?;
-        Ok(())
-    })
-    .await
+    blocking(move || crate::util::shell_open(&url, "")).await
 }
 
 // ── devices ──
@@ -285,10 +278,14 @@ pub fn iphone_status() -> crate::iphone::Status {
     crate::iphone::status()
 }
 
-/// Windows Firewall rule for the iPhone page (administrator rights, once).
+/// Windows "Allow an app through firewall" page, for an iPhone that cannot open the page. The
+/// app does not change firewall rules itself: programs that do look suspicious to antivirus.
 #[tauri::command]
-pub async fn iphone_firewall() -> Res<crate::iphone::Status> {
-    blocking(crate::iphone::allow_firewall).await
+pub async fn open_firewall() -> Res<()> {
+    if !cfg!(windows) {
+        return Err("Только для Windows".into());
+    }
+    blocking(|| crate::util::shell_open("control.exe", "/name Microsoft.WindowsFirewall /page pageConfigureApps")).await
 }
 
 // ── microphone ──

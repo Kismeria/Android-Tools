@@ -110,7 +110,7 @@ sudo pacman -U https://github.com/Kismeria/Android-Tools/releases/latest/downloa
 
 Сертификат страницы самоподписанный: в Safari нажмите «Подробнее» → «Посетить этот веб-сайт». Подойдёт и любой другой телефон с браузером. Linux: нужен `ffmpeg` (ставится вместе со `scrcpy`).
 
-Windows: при первом включении программа предложит открыть порты 8443–8446 в брандмауэре (один раз, права администратора) — без этого iPhone не достучится до ПК, особенно если сеть Windows считает «общественной».
+Windows: при первом включении Windows спросит, можно ли программе работать в сети, — разрешите. Если страница на iPhone не открывается, кнопка «Брандмауэр» в карточке iPhone открывает список разрешённых программ: отметьте «Android Tools» для частной и общественной сети.
 
 ### Автоматический Wi‑Fi
 
@@ -206,7 +206,7 @@ Linux uses a PipeWire/PulseAudio pipe source (`pactl` from `libpulse`), no root 
 
 ### iPhone as a webcam
 
-No app on the iPhone: Devices → "Connect iPhone" shows a QR code, Safari opens a page and streams the camera to the PC over Wi‑Fi (or USB with Personal Hotspot on). Choose iPhone as the source on the Camera tab. The page uses a self-signed certificate: tap "Show Details" → "visit this website". On Windows the app offers to open ports 8443–8446 in Windows Firewall once (administrator rights).
+No app on the iPhone: Devices → "Connect iPhone" shows a QR code, Safari opens a page and streams the camera to the PC over Wi‑Fi (or USB with Personal Hotspot on). Choose iPhone as the source on the Camera tab. The page uses a self-signed certificate: tap "Show Details" → "visit this website". On Windows allow the app when Windows asks about network access; if the page still does not open, the Firewall button on the iPhone card opens the list of allowed apps.
 
 ### Automatic Wi‑Fi
 
