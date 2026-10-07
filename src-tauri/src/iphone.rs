@@ -6,7 +6,7 @@
 //! WebSocket to a server with a self-signed certificate fails on iOS.
 //! The camera module consumes the frames through `set_sink`.
 use std::collections::{HashMap, VecDeque};
-use std::io::{BufRead, BufReader, Read, Write};
+use std::io::{BufRead, BufReader, Write};
 use std::net::{IpAddr, Ipv4Addr, TcpListener, TcpStream};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
