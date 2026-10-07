@@ -34,7 +34,7 @@ dependencies = [
 
 [[package]]
 name = "android-tools"
-version = "2.3.1"
+version = "2.4.0"
 dependencies = [
  "apk-info-axml",
  "apk-info-xml",
@@ -53,7 +53,6 @@ dependencies = [
  "tauri",
  "tauri-build",
  "tauri-plugin-dialog",
- "tungstenite",
  "ureq",
  "windows",
  "zip",

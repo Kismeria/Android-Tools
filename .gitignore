@@ -9,3 +9,4 @@ packaging/arch/*.tar.gz
 packaging/arch/*.pkg.tar.zst
 packaging/arch/src/
 packaging/arch/pkg/
+__pycache__/

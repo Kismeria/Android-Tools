@@ -14,6 +14,9 @@ const DEFAULTS = {
   save_dir: "",
   auto_refresh: true,
   wifi_last: "",
+  // USB phones move to Wi‑Fi by themselves; remembered addresses are reconnected.
+  wifi_auto: false,
+  wifi_known: [],
   screen: {
     preset: "balance", max_size: 1600, fps: 60, bitrate: 8, codec: "h264", audio: true, turn_off: false,
     stay_awake: true, touches: false, on_top: false, borderless: false, fullscreen: false, view_only: false,
@@ -218,7 +221,16 @@ const saveSub = (name) => joinPath(cfg.save_dir, I18N.t(name));
 
 /* ───────────── device state ───────────── */
 
-const S = { devices: [], info: {}, serial: cfg.serial, polling: false, signature: null };
+// Device details are kept between launches: names and battery show at once, then refresh.
+const INFO_KEY = "devinfo";
+const loadInfo = () => { try { return JSON.parse(localStorage.getItem(INFO_KEY) || "{}") || {}; } catch { return {}; } };
+const saveInfo = () => {
+  const keep = Object.entries(S.info).sort((a, b) => (b[1]._t || 0) - (a[1]._t || 0)).slice(0, 12);
+  try { localStorage.setItem(INFO_KEY, JSON.stringify(Object.fromEntries(keep))); } catch {}
+};
+
+// fresh: details requested this session; loaded: details read this session (not from the cache).
+const S = { devices: [], info: loadInfo(), fresh: new Set(), loaded: new Set(), serial: cfg.serial, polling: false, signature: null };
 const listeners = new Set();
 const onDevice = (fn) => listeners.add(fn);
 const emitDevice = () => listeners.forEach((fn) => fn());
@@ -226,6 +238,12 @@ const emitDevice = () => listeners.forEach((fn) => fn());
 const device = () => S.devices.find((d) => d.serial === S.serial);
 const online = () => device()?.state === "device";
 const devName = (serial = S.serial) => S.info[serial]?.name || S.devices.find((d) => d.serial === serial)?.model || serial;
+// The same phone over USB and over Wi‑Fi: two serials, one hardware serial number.
+const samePhone = (a, b) => {
+  if (a === b) return false;
+  const ia = S.info[a], ib = S.info[b];
+  return !!(ia?.hw && ia.hw === ib?.hw) || (!!ib?.ip && a === `${ib.ip}:5555`) || (!!ia?.ip && b === `${ia.ip}:5555`);
+};
 
 function requireDevice() {
   const d = device();
@@ -243,19 +261,21 @@ function select(serial) {
   emitDevice();
 }
 
-async function poll(force = false) {
+async function poll(force = false, { busy = force } = {}) {
   if (S.polling || (!force && !cfg.auto_refresh && S.signature !== null)) return;
   S.polling = true;
   try {
-    const list = await call("devices", {}, { busy: force, quiet: !force });
+    const list = await call("devices", {}, { busy, quiet: !force });
+    for (const d of list) if (d.state === "device" && !S.fresh.has(d.serial)) refreshInfo(d.serial);
     const sig = list.map((d) => d.serial + d.state).join("|");
     if (sig === S.signature && !force) return;
     S.signature = sig;
     S.devices = list;
-    for (const d of list) if (d.state === "device" && !S.info[d.serial]) refreshInfo(d.serial);
     if (!list.some((d) => d.serial === S.serial)) {
       const on = list.filter((d) => d.state === "device");
-      S.serial = (list.find((d) => d.serial === cfg.serial) || on[0] || list[0])?.serial || "";
+      // Cable pulled: stay with the same phone over Wi‑Fi.
+      const twin = on.find((d) => samePhone(d.serial, S.serial));
+      S.serial = (twin || list.find((d) => d.serial === cfg.serial) || on[0] || list[0])?.serial || "";
     }
     emitDevice();
   } catch {
@@ -268,10 +288,16 @@ async function poll(force = false) {
 }
 
 async function refreshInfo(serial) {
+  S.fresh.add(serial);
   try {
-    S.info[serial] = await call("device_info", { serial }, { busy: false, quiet: true });
+    const info = await call("device_info", { serial }, { busy: false, quiet: true });
+    S.info[serial] = { ...info, _t: Date.now() };
+    S.loaded.add(serial);
+    saveInfo();
     emitDevice();
-  } catch {}
+  } catch {
+    setTimeout(() => S.fresh.delete(serial), 10000);
+  }
 }
 
 /* ───────────── navigation ───────────── */
@@ -319,6 +345,7 @@ registerPage("devices", {
       if (!a.includes(":")) a += ":5555";
       cfg.wifi_last = a; save();
       await call("wifi_connect", { address: a });
+      AutoWifi.remember(a);
       toast(`Подключено: ${a}`, "ok");
       cfg.serial = a; S.serial = a;
       this.refresh();
@@ -336,6 +363,17 @@ registerPage("devices", {
     $("#pairCode").onkeydown = (e) => e.key === "Enter" && pair();
     $("#wifiPair").onclick = pair;
     for (const t of $$("[data-quick]", el)) t.onclick = () => this.quick(t.dataset.quick);
+    const auto = $("#wifiAuto");
+    auto.checked = cfg.wifi_auto;
+    auto.onchange = () => {
+      cfg.wifi_auto = auto.checked;
+      save();
+      if (auto.checked) {
+        AutoWifi.tried.clear();
+        AutoWifi.lastReconnect = 0;
+        AutoWifi.tick();
+      }
+    };
     this.iphoneInit();
     $("#wifiScan").onclick = async () => {
       const found = await call("wifi_scan");
@@ -359,7 +397,9 @@ registerPage("devices", {
       cfg.iphone.enabled = true;
       save();
       this.iphPaint(st);
+      if (st.firewall) this.firewall(true);
     };
+    $("#iphFirewallFix").onclick = () => this.firewall(false);
     $("#iphUrl").onchange = (e) => ($("#iphQr").innerHTML = this.iph?.qrs[e.target.selectedIndex] || "");
     $("#iphCopy").onclick = () => {
       navigator.clipboard.writeText($("#iphUrl").value);
@@ -370,11 +410,21 @@ registerPage("devices", {
     const first = cfg.iphone.enabled ? call("iphone_start", {}, { busy: false, quiet: true }) : call("iphone_status", {}, { busy: false, quiet: true });
     first.then((st) => this.iphPaint(st)).catch(() => {});
   },
+  // Windows Firewall blocks the phone until the server's ports are allowed (admin rights, once).
+  async firewall(ask) {
+    if (ask && !(await confirmBox("Разрешить iPhone подключаться?",
+      "Брандмауэр Windows не пускает телефон к программе, и страница на iPhone не откроется. Windows запросит права администратора, чтобы открыть порты 8443–8446 для всех сетей.",
+      "Разрешить", "primary"))) return;
+    const st = await call("iphone_firewall");
+    this.iphPaint(st);
+    if (!st.firewall) toast("Брандмауэр: iPhone может подключаться", "ok");
+  },
   iphPaint(st) {
     const was = this.iph;
     this.iph = st;
     $("#iphOn").style.display = st.running ? "" : "none";
     $("#iphOff").style.display = st.running ? "none" : "";
+    $("#iphFirewall").style.display = st.running && st.firewall ? "" : "none";
     const b = $("#iphToggle");
     b.className = `btn small ${st.running ? "" : "primary"}`;
     b.innerHTML = st.running ? `<i class="ic">&#xE71A;</i><span>Выключить</span>` : `<i class="ic">&#xE71B;</i><span>Подключить iPhone</span>`;
@@ -429,7 +479,7 @@ registerPage("devices", {
   refresh() {
     S.signature = null;
     poll(true);
-    for (const s of Object.keys(S.info)) refreshInfo(s);
+    for (const d of S.devices) if (d.state === "device") refreshInfo(d.serial);
   },
 
   render() {
@@ -477,7 +527,16 @@ registerPage("devices", {
           const r = e.target.closest("[data-more]").getBoundingClientRect();
           const items = [];
           if (d.state === "device" && !d.wireless) items.push({ label: "Перейти на Wi‑Fi", action: () => this.toWifi(d.serial) });
-          if (d.wireless) items.push({ label: "Отключить", action: async () => { await call("wifi_disconnect", { address: d.serial }); this.refresh(); } });
+          if (d.wireless) {
+            items.push({
+              label: "Отключить",
+              action: async () => {
+                AutoWifi.forget(d.serial);
+                await call("wifi_disconnect", { address: d.serial });
+                this.refresh();
+              },
+            });
+          }
           items.push({ label: "Обновить инфо", action: () => refreshInfo(d.serial) });
           items.push({ label: "Копировать серийник", action: () => navigator.clipboard.writeText(d.serial) });
           if (info.ip) items.push({ label: `Копировать IP (${info.ip})`, action: () => navigator.clipboard.writeText(info.ip) });
@@ -494,10 +553,68 @@ registerPage("devices", {
     const a = await call("wifi_switch", { serial });
     $("#wifiAddr").value = a;
     cfg.wifi_last = a; save();
+    AutoWifi.remember(a);
     toast(`Готово: ${a} — USB можно отключить`, "ok");
     this.refresh();
   },
 });
+
+/* Wi‑Fi without clicks (Devices → Wi‑Fi → «Автоматически»): a phone plugged in over USB moves to
+   Wi‑Fi by itself, and phones that were on Wi‑Fi are connected again when they are back in the
+   network (after a PC restart, a Wi‑Fi drop or an adb restart). */
+const AutoWifi = {
+  busy: false,
+  tried: new Map(), // USB serial → time of the last switch attempt
+  lastReconnect: 0,
+  remember(address) {
+    cfg.wifi_known = [address, ...cfg.wifi_known.filter((a) => a !== address)].slice(0, 6);
+    save();
+  },
+  forget(address) {
+    cfg.wifi_known = cfg.wifi_known.filter((a) => a !== address);
+    save();
+  },
+  // Switching restarts adbd on the phone: never while the screen, camera or mic use the cable.
+  inUse(serial) {
+    return ["screen", "camera", "mic"].some((p) => pages[p]?.running && pages[p].serial === serial);
+  },
+  onWifi(serial) {
+    return S.devices.some((x) => x.wireless && x.state === "device" && samePhone(x.serial, serial));
+  },
+  async tick() {
+    if (!cfg.wifi_auto || this.busy) return;
+    this.busy = true;
+    try {
+      for (const d of S.devices) {
+        if (d.wireless || d.state !== "device" || !S.loaded.has(d.serial)) continue;
+        if (!S.info[d.serial]?.ip || this.onWifi(d.serial) || this.inUse(d.serial)) continue;
+        if (Date.now() - (this.tried.get(d.serial) || 0) < 60000) continue;
+        this.tried.set(d.serial, Date.now());
+        try {
+          const address = await call("wifi_switch", { serial: d.serial }, { busy: false, quiet: true });
+          this.remember(address);
+          toast(`${devName(d.serial)}: Wi‑Fi ${address} — кабель можно отключить`, "ok");
+          poll(true, { busy: false });
+        } catch {}
+      }
+      if (Date.now() - this.lastReconnect < 15000) return;
+      this.lastReconnect = Date.now();
+      const lost = cfg.wifi_known.filter((a) => !S.devices.some((x) => x.serial === a && x.state === "device"));
+      if (!lost.length) return;
+      const back = await Promise.all(lost.map(async (address) => {
+        try {
+          // An "offline" entry never recovers by itself after the phone changed networks.
+          if (S.devices.some((x) => x.serial === address)) await call("wifi_disconnect", { address }, { busy: false, quiet: true });
+          await call("wifi_connect", { address }, { busy: false, quiet: true });
+          return true;
+        } catch { return false; }
+      }));
+      if (back.some(Boolean)) poll(true, { busy: false });
+    } finally {
+      this.busy = false;
+    }
+  },
+};
 
 /* ═════════════ SCREEN ═════════════ */
 
@@ -566,6 +683,7 @@ registerPage("screen", {
     $("#scrStart").disabled = true;
     try {
       this.warned = false;
+      this.serial = serial;
       const warning = await call("mirror_start", {
         serial, title: `${devName()} — Android Tools`, saveDir: cfg.save_dir,
         settings: { ...cfg.screen, sdk: S.info[serial]?.sdk || 0 },
@@ -628,6 +746,8 @@ registerPage("screen", {
 registerPage("camera", {
   running: false,
   camerasFor: null,
+  session: 0,
+  serial: "",
   init(el) {
     const restartKeys = ["camera.facing", "camera.quality", "camera.fps", "camera.bitrate", "camera.torch", "camera.mode", "camera.source"];
     let timer = null;
@@ -660,6 +780,9 @@ registerPage("camera", {
     });
     T.event.listen("camera-status", (e) => {
       const s = e.payload;
+      // Switching front ↔ back restarts the stream: the old one reports "stopped" after the new
+      // one started and must not turn the preview off.
+      if (s.session !== this.session) return;
       if (s.state === "stopped") return this.setRunning(false);
       $("#camStatus").textContent = s.state === "running"
         ? (this.vcam?.device ? "Трансляция → Android Tools Camera" : "Только превью — камера Windows не установлена")
@@ -758,6 +881,7 @@ registerPage("camera", {
   },
   async remove() {
     if (!(await confirmBox("Удалить камеру?", "Устройство «Android Tools Camera» исчезнет из системы.", "Удалить"))) return;
+    this.session = 0;
     await call("camera_remove");
     this.setRunning(false);
     toast("Камера удалена", "ok");
@@ -772,17 +896,20 @@ registerPage("camera", {
     const serial = iphone ? "" : requireDevice();
     if (!iphone && !serial) return;
     if (!iphone && !S.info[serial]) await refreshInfo(serial);
-    if (this.vcam && this.vcam.supported && !this.vcam.device) toast("Камера Windows не установлена — будет только превью");
+    if (this.vcam && this.vcam.supported && !this.vcam.device && !this.running) toast("Камера Windows не установлена — будет только превью");
+    const session = this.session = Math.max(Date.now(), this.session + 1);
+    this.serial = serial;
     this.setRunning(true);
     $("#camStatus").textContent = "Подключение…";
     await call("camera_start", {
       settings: {
         serial, sdk: S.info[serial]?.sdk || 0, facing: c.facing, camera_id: c.camera_id, quality: c.quality,
-        fps: c.fps, bitrate: c.bitrate, mode: c.mode, torch: c.torch, live: this.live(), source: c.source,
+        fps: c.fps, bitrate: c.bitrate, mode: c.mode, torch: c.torch, live: this.live(), source: c.source, session,
       },
-    }).catch(() => this.setRunning(false));
+    }).catch(() => session === this.session && this.setRunning(false));
   },
   async stop() {
+    this.session = 0;
     this.setRunning(false);
     await call("camera_stop", {}, { busy: false, quiet: true });
   },
@@ -815,6 +942,8 @@ const dbPos = (db) => Math.max(0, Math.min(1, (db + 60) / 60));
 
 registerPage("mic", {
   running: false,
+  session: 0,
+  serial: "",
   history: new Array(160).fill(0),
   peak: 0,
   colors: null,
@@ -862,6 +991,7 @@ registerPage("mic", {
     T.event.listen("mic-level", (e) => this.running && this.level(e.payload));
     T.event.listen("mic-status", (e) => {
       const s = e.payload;
+      if (s.session !== this.session) return; // a stream replaced by a restart
       if (s.state === "stopped") return this.setRunning(false);
       $("#micStatus").textContent = s.state === "running"
         ? (s.device ? "Трансляция → Android Tools Microphone" : "Только прослушивание — микрофон не установлен")
@@ -966,6 +1096,7 @@ registerPage("mic", {
   },
   async remove() {
     if (!(await confirmBox("Удалить микрофон?", "Устройство «Android Tools Microphone» исчезнет из системы.", "Удалить"))) return;
+    this.session = 0;
     await call("mic_remove");
     this.setRunning(false);
     toast("Микрофон удалён", "ok");
@@ -977,13 +1108,16 @@ registerPage("mic", {
     if (!S.info[serial]) await refreshInfo(serial);
     const sdk = S.info[serial]?.sdk || 0;
     if (sdk && sdk < 30) return toast("Микрофон телефона доступен с Android 11", "err");
+    const session = this.session = Math.max(Date.now(), this.session + 1);
+    this.serial = serial;
     this.setRunning(true);
     $("#micStatus").textContent = "Подключение…";
     await call("mic_start", {
-      settings: { serial, sdk, source: cfg.mic.source, buffer: cfg.mic.buffer, live: this.live() },
-    }).catch(() => this.setRunning(false));
+      settings: { serial, sdk, source: cfg.mic.source, buffer: cfg.mic.buffer, live: this.live(), session },
+    }).catch(() => session === this.session && this.setRunning(false));
   },
   async stop() {
+    this.session = 0;
     this.setRunning(false);
     await call("mic_stop", {}, { busy: false, quiet: true });
   },
@@ -1008,8 +1142,12 @@ registerPage("mic", {
 const appLabel = (pkg, labels) => labels[pkg] || pkg.split(".").pop().replace(/^./, (c) => c.toUpperCase());
 const iconCss = (icon) => (icon?.kind === "layers" ? icon.layers.slice().reverse().join(", ") : "");
 function paintAppIcon(el, pkg, label, icon) {
-  el.className = `appicon${icon?.kind === "layers" ? (icon.adaptive ? " real adaptive" : " real") : ""}`;
-  if (icon?.kind === "layers") {
+  // classList, not className: the details badge also carries "big".
+  const real = icon?.kind === "layers";
+  el.classList.add("appicon");
+  el.classList.toggle("real", real);
+  el.classList.toggle("adaptive", real && !!icon.adaptive);
+  if (real) {
     el.style.background = iconCss(icon);
     el.textContent = "";
   } else {
@@ -1764,16 +1902,25 @@ function chooseLanguage() {
   I18N.apply(cfg.lang);
   call("set_language", { lang: cfg.lang }, { busy: false, quiet: true }).catch(() => {});
   go("devices");
-  try {
-    const info = await call("app_info", {}, { quiet: true });
+  // The device list comes first and waits for nothing else.
+  const first = poll(true);
+  call("app_info", {}, { busy: false, quiet: true }).then((info) => {
     if (!cfg.save_dir) { cfg.save_dir = info.save_dir; save(); }
     $("#aboutVer").textContent = `Версия ${info.version}  ·  Tauri · adb · scrcpy`;
     $("#updCurrent").textContent = `v${info.version}`;
-  } catch (e) {
-    toast(`Инструменты: ${e}`, "err");
-  }
-  await poll(true);
-  setInterval(() => poll(), 2500);
+  }).catch((e) => toast(`Инструменты: ${e}`, "err"));
+  await first;
+  // A freshly started adb server needs a moment to see USB phones: look often at first.
+  let early = 0;
+  const fast = setInterval(() => {
+    if (++early > 16 || S.devices.some((d) => d.state === "device")) return clearInterval(fast);
+    poll();
+  }, 400);
+  setInterval(() => poll(), 2000);
+  onDevice(() => AutoWifi.tick());
+  setInterval(() => AutoWifi.tick(), 5000);
+  // Battery and storage of the selected phone stay current.
+  setInterval(() => online() && refreshInfo(S.serial), 60000);
   if (cfg.updates.auto) {
     setTimeout(async () => {
       const u = await pages.settings.checkUpdate(false);

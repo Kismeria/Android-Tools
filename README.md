@@ -66,7 +66,7 @@ sudo pacman -U https://github.com/Kismeria/Android-Tools/releases/latest/downloa
 
 |---|---|
 
-| Устройства | список, батарея и память, Wi‑Fi: подключение, сопряжение по коду, поиск в сети, переход USB → Wi‑Fi |
+| Устройства | список, батарея и память, Wi‑Fi: подключение, сопряжение по коду, поиск в сети, переход USB → Wi‑Fi (вручную или автоматически, с переподключением) |
 
 | Экран | окно scrcpy, профили, FPS, кодек, битрейт, звук (Android 10 — через [sndcpy](https://github.com/rom1v/sndcpy)), запись, HID‑мышь и HID‑клавиатура, кнопки телефона |
 
@@ -109,6 +109,12 @@ sudo pacman -U https://github.com/Kismeria/Android-Tools/releases/latest/downloa
 Приложения на iPhone не нужны. «Девайсы» → «Подключить iPhone»: программа показывает QR-код, iPhone открывает страницу в Safari и передаёт камеру на ПК по Wi‑Fi (или по кабелю с включённым «Режимом модема»). Картинка идёт в ту же «Android Tools Camera»: на вкладке «Камера» выберите источник iPhone.
 
 Сертификат страницы самоподписанный: в Safari нажмите «Подробнее» → «Посетить этот веб-сайт». Подойдёт и любой другой телефон с браузером. Linux: нужен `ffmpeg` (ставится вместе со `scrcpy`).
+
+Windows: при первом включении программа предложит открыть порты 8443–8446 в брандмауэре (один раз, права администратора) — без этого iPhone не достучится до ПК, особенно если сеть Windows считает «общественной».
+
+### Автоматический Wi‑Fi
+
+«Девайсы» → Wi‑Fi → «Автоматически»: телефон, подключённый кабелем, сам переходит на Wi‑Fi (кабель можно отключить), а знакомые телефоны подключаются снова после обрыва сети или перезапуска ПК. Пока по кабелю идёт трансляция экрана, камера или микрофон, переход откладывается. После перезагрузки телефона его нужно один раз подключить кабелем.
 
 
 
@@ -200,7 +206,11 @@ Linux uses a PipeWire/PulseAudio pipe source (`pactl` from `libpulse`), no root 
 
 ### iPhone as a webcam
 
-No app on the iPhone: Devices → "Connect iPhone" shows a QR code, Safari opens a page and streams the camera to the PC over Wi‑Fi (or USB with Personal Hotspot on). Choose iPhone as the source on the Camera tab. The page uses a self-signed certificate: tap "Show Details" → "visit this website".
+No app on the iPhone: Devices → "Connect iPhone" shows a QR code, Safari opens a page and streams the camera to the PC over Wi‑Fi (or USB with Personal Hotspot on). Choose iPhone as the source on the Camera tab. The page uses a self-signed certificate: tap "Show Details" → "visit this website". On Windows the app offers to open ports 8443–8446 in Windows Firewall once (administrator rights).
+
+### Automatic Wi‑Fi
+
+Devices → Wi‑Fi → "Automatic": a phone plugged in by cable moves to Wi‑Fi by itself, and known phones reconnect after a network drop or a PC restart. The switch waits while the screen, camera or microphone run over the cable. After a phone reboot, plug it in once.
 
 
 
@@ -240,7 +250,9 @@ npm run build         # → src-tauri/target/release/
 
 Windows: Rust (MSVC), Visual Studio Build Tools with Windows SDK, Node.js.
 
-Arch Linux: `packaging/arch/PKGBUILD` (`makepkg -si`); GitHub Actions builds the package for every release.
+Arch Linux: `packaging/arch/PKGBUILD` (`makepkg -si`).
+
+GitHub Actions builds `Android-Tools.exe` (`.github/workflows/windows.yml`) and the Arch package (`arch.yml`) for every published release and attaches them to it; "Run workflow" builds either one from any branch as a downloadable artifact.
 
 
 

@@ -1,5 +1,7 @@
 //! Linux: adb and scrcpy come from the distribution (Arch: `android-tools`, `scrcpy`).
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::OnceLock;
 
 use serde::Serialize;
 
@@ -8,8 +10,15 @@ use crate::util::{hidden, which, Res};
 const MISSING: &str = "Установите пакеты android-tools и scrcpy";
 const MANAGED: &str = "Обновляется через pacman";
 
+/// Every adb call checks the tools: PATH is searched until they are found once.
+static READY: AtomicBool = AtomicBool::new(false);
+
 pub fn ensure() -> Res<()> {
+    if READY.load(Ordering::Relaxed) {
+        return Ok(());
+    }
     if adb_exe().is_file() && scrcpy_exe().is_some() {
+        READY.store(true, Ordering::Relaxed);
         Ok(())
     } else {
         Err(MISSING.into())
@@ -17,7 +26,14 @@ pub fn ensure() -> Res<()> {
 }
 
 pub fn adb_exe() -> PathBuf {
-    which("adb").unwrap_or_else(|| PathBuf::from("/usr/bin/adb"))
+    static ADB: OnceLock<PathBuf> = OnceLock::new();
+    if let Some(p) = ADB.get() {
+        return p.clone();
+    }
+    match which("adb") {
+        Some(p) => ADB.get_or_init(|| p).clone(),
+        None => PathBuf::from("/usr/bin/adb"),
+    }
 }
 
 pub fn scrcpy_exe() -> Option<PathBuf> {

@@ -390,11 +390,15 @@
 /* ════════════════ Terminal / CRT ════════════════ */
 
 :root[data-style="terminal"] { --font: var(--mono); --radius: 0; --radius-sm: 0; }
-:root[data-style="terminal"] body { font-size: 12.5px; text-shadow: 0 0 5px color-mix(in srgb, var(--accent) 35%, transparent); }
-:root[data-style="terminal"] .app::after {
-  content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 100;
-  background: repeating-linear-gradient(0deg, rgba(0,0,0,.2) 0 1px, transparent 1px 3px), radial-gradient(ellipse at center, transparent 60%, rgba(0,0,0,.45) 100%);
+/* CRT look that never covers the content: faint scan lines lie behind the interface (cards and
+   lists are see-through) instead of a darkening overlay with a vignette on top of everything,
+   which made full-height pages like Apps unreadable at the edges and dimmed menus and dialogs. */
+:root[data-style="terminal"] body {
+  font-size: 12.5px;
+  background: repeating-linear-gradient(0deg, color-mix(in srgb, var(--text) 5%, transparent) 0 1px, transparent 1px 3px), var(--bg);
 }
+:root[data-style="terminal"] .app { text-shadow: 0 0 4px color-mix(in srgb, var(--accent) 28%, transparent); }
+:root[data-style="terminal"]:is([data-palette="catppuccin-latte"], [data-palette="rose-pine"], [data-palette="flexoki-light"], [data-palette="m3"], [data-palette="sunny"]) .app { text-shadow: none; }
 :root[data-style="terminal"] .sidebar { border-right: 1px dashed var(--border-hi); }
 :root[data-style="terminal"] .nav { border-radius: 0; }
 :root[data-style="terminal"] .nav.active { background: transparent; outline: 1px solid var(--accent); color: var(--accent); }
@@ -413,8 +417,10 @@
 :root[data-style="terminal"] .btn:hover, :root[data-style="terminal"] .tile:hover { background: var(--accent); color: var(--on-accent); text-shadow: none; }
 :root[data-style="terminal"] .btn:hover .ic, :root[data-style="terminal"] .tile:hover .ic { color: var(--on-accent); }
 :root[data-style="terminal"] .btn.primary { background: var(--accent); color: var(--on-accent); text-shadow: none; }
-:root[data-style="terminal"] .btn.stop { background: var(--danger); color: var(--bg); border-color: var(--danger); }
+:root[data-style="terminal"] .btn.stop, :root[data-style="terminal"] .btn.stop:hover { background: var(--danger); color: var(--bg); border-color: var(--danger); text-shadow: none; }
 :root[data-style="terminal"] .btn.danger { border-color: var(--danger); color: var(--danger); }
+:root[data-style="terminal"] .btn.danger:hover { background: var(--danger); color: var(--bg); }
+:root[data-style="terminal"] .btn.stop .ic, :root[data-style="terminal"] .btn.danger:hover .ic { color: var(--bg); }
 :root[data-style="terminal"] .btn.ghost { border-color: transparent; color: var(--dim); }
 :root[data-style="terminal"] .seg { border: 1px solid var(--border-hi); background: transparent; }
 :root[data-style="terminal"] .seg button.on { background: var(--accent); color: var(--on-accent); border-color: transparent; text-shadow: none; }
@@ -441,6 +447,14 @@
 :root[data-style="terminal"] .step > b, :root[data-style="terminal"] .device .badge, :root[data-style="terminal"] .app-badge, :root[data-style="terminal"] .mic-orb { border-radius: 0; }
 :root[data-style="terminal"] .statusbar { border-top: 1px dashed var(--border-hi); }
 :root[data-style="terminal"] .sb-chip { border-radius: 0; }
+:root[data-style="terminal"] .device.selected { border: 1px solid var(--accent); box-shadow: inset 3px 0 var(--accent); }
+:root[data-style="terminal"] .device:hover { border-color: var(--accent); }
+:root[data-style="terminal"] .pill { border-style: dashed; background: transparent; }
+:root[data-style="terminal"] .console, :root[data-style="terminal"] .preview, :root[data-style="terminal"] .wave, :root[data-style="terminal"] .thumb {
+  border: 1px dashed var(--border-hi);
+}
+:root[data-style="terminal"] .theme-card, :root[data-style="terminal"] .pal-card { background: transparent; border: 1px dashed var(--border-hi); }
+:root[data-style="terminal"] .theme-card.on, :root[data-style="terminal"] .pal-card.on { border: 1px solid var(--accent); }
 
 /* ════════════════ Neo-brutalism ════════════════ */
 
@@ -734,6 +748,31 @@
 :root[data-style="material"] .statusbar { border-top: 0; background: var(--surface); }
 :root[data-style="material"] .sb-chip.on { border: 0; }
 
+/* ════════════════ shared fixes ════════════════ */
+
+/* Square designs: parts with a fixed radius in style.css (lists, segments, menus, dialogs,
+   toasts, the device pill) stayed rounded. */
+:root:is([data-style="terminal"], [data-style="cyberpunk"], [data-style="gameboy"], [data-style="win95"])
+  :is(.pill, .list, .item, .seg, .seg button, .menu, .menu button, .modal, .toast, .console, .thumb, .drop, .theme-card, .pal-card) {
+  border-radius: 0;
+}
+
+/* The selected phone: designs that redraw card borders hid the highlight. */
+:root[data-style="synthwave"] .device.selected { border-color: #ff3ea5; box-shadow: 0 0 22px rgba(255,62,165,.45), inset 3px 0 #ff3ea5; }
+:root[data-style="gameboy"] .device.selected { background: #9bbc0f; box-shadow: inset 0 0 0 3px #0f380f; }
+:root[data-style="paper"] .device.selected { background: #fff8d6; box-shadow: 3px 4px 0 rgba(0,0,0,.14), inset 0 0 0 2px #2b59c3; }
+:root[data-style="aqua"] .device.selected { border-color: #3875d7; box-shadow: 0 0 0 3px rgba(56,117,215,.35); }
+:root[data-style="glass"] .device.selected {
+  border-color: color-mix(in srgb, var(--accent) 70%, transparent);
+  box-shadow: 0 8px 32px rgba(0,0,0,.18), inset 0 0 0 1px color-mix(in srgb, var(--accent) 55%, transparent);
+}
+
+/* Light colors: the dark default shadow looked like a smudge under menus and toasts. */
+[data-palette="catppuccin-latte"], [data-palette="rose-pine"], [data-palette="flexoki-light"], [data-palette="m3"], [data-palette="sunny"],
+[data-style="xp"], [data-style="aqua"], [data-style="paper"], [data-style="gameboy"], [data-style="win95"] {
+  --shadow: rgba(0, 0, 0, .16);
+}
+
 /* ════════════════ preview cards (Settings) ════════════════ */
 
 .tp[data-style="win95"] { background: #008080; border: 0; }
@@ -804,9 +843,10 @@
     radial-gradient(ellipse at 0% 110%, rgba(0,240,255,.10), transparent 50%),
     #0a0b10;
 }
+/* Scan lines over the interface but under toasts (50), dialogs (60) and menus (70). */
 :root[data-style="cyberpunk"] .app::after {
-  content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 100;
-  background: repeating-linear-gradient(0deg, rgba(0,0,0,.14) 0 1px, transparent 1px 3px);
+  content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 45;
+  background: repeating-linear-gradient(0deg, rgba(0,0,0,.1) 0 1px, transparent 1px 3px);
 }
 :root[data-style="cyberpunk"] .sidebar { background: rgba(5,6,10,.85); border-right: 1px solid rgba(255,0,60,.45); }
 :root[data-style="cyberpunk"] .logo { color: var(--accent); filter: drop-shadow(0 0 6px rgba(252,238,10,.6)); }

@@ -1,0 +1,79 @@
+name: Windows exe
+
+on:
+  # Work branches: compile check. A v* tag: build and publish (a pre-release if it is new).
+  push:
+    branches-ignore: [main]
+    tags: ["v*"]
+    paths:
+      - "src-tauri/**"
+      - "ui/**"
+      - "scripts/fetch-tools.ps1"
+      - "package.json"
+      - "package-lock.json"
+      - ".github/workflows/windows.yml"
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Release tag to attach the exe to (empty: artifact only)"
+        required: false
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Download adb and scrcpy (embedded into the exe)
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: ./scripts/fetch-tools.ps1
+
+      - name: Unit tests
+        run: cargo test --manifest-path src-tauri/Cargo.toml
+
+      - name: Build
+        run: |
+          npm ci
+          npm run build
+
+      - name: Name the exe like the release asset
+        shell: pwsh
+        run: Copy-Item "src-tauri/target/release/Android Tools.exe" Android-Tools.exe
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows-exe
+          path: Android-Tools.exe
+
+      - name: Attach to release
+        if: github.event_name == 'release' || github.ref_type == 'tag' || github.event.inputs.tag != ''
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.release.tag_name || github.event.inputs.tag || github.ref_name }}
+        run: |
+          # A pushed tag has no release yet: create it as a pre-release (the app's update check
+          # ignores pre-releases) with the annotated tag's message as notes. The Arch job may
+          # have created it a moment earlier.
+          gh release view $env:TAG -R $env:GITHUB_REPOSITORY *> $null
+          if ($LASTEXITCODE -ne 0) {
+            gh release create $env:TAG --prerelease --verify-tag --notes-from-tag -R $env:GITHUB_REPOSITORY
+          }
+          gh release upload $env:TAG Android-Tools.exe --clobber -R $env:GITHUB_REPOSITORY

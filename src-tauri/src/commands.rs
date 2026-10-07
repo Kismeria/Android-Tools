@@ -39,6 +39,7 @@ use crate::util::{default_save_dir, folder};
 
 // ── app / tools ──
 
+/// Startup info. Tool versions (`tools_info`) start adb and scrcpy, so they load with Settings.
 #[tauri::command]
 pub async fn app_info() -> Res<Value> {
     blocking(|| {
@@ -46,7 +47,6 @@ pub async fn app_info() -> Res<Value> {
         Ok(json!({
             "version": env!("CARGO_PKG_VERSION"),
             "save_dir": default_save_dir().display().to_string(),
-            "tools": tools::info(),
         }))
     })
     .await
@@ -173,7 +173,8 @@ pub async fn mirror_start(
     let record_dir = PathBuf::from(save_dir).join(folder("Записи", "Recordings")).display().to_string();
     let args = mirror::build_args(&serial, &settings, &title, &record_dir);
     let sound = mirror::needs_sndcpy(&settings);
-    let mut m = Mirror::default();
+    // `start` closes a window that is still open; a fresh Mirror would leave it running unseen.
+    let mut m = std::mem::take(&mut *state.mirror.lock().unwrap());
     let (m, warning) = blocking(move || {
         m.start(args)?;
         let warning = if sound { m.start_sound(&serial).err() } else { None };
@@ -282,6 +283,12 @@ pub fn iphone_stop() {
 #[tauri::command]
 pub fn iphone_status() -> crate::iphone::Status {
     crate::iphone::status()
+}
+
+/// Windows Firewall rule for the iPhone page (administrator rights, once).
+#[tauri::command]
+pub async fn iphone_firewall() -> Res<crate::iphone::Status> {
+    blocking(crate::iphone::allow_firewall).await
 }
 
 // ── microphone ──

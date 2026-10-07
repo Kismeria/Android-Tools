@@ -31,6 +31,9 @@ pub struct Settings {
     /// "android" (default) or "iphone".
     #[serde(default)]
     pub source: String,
+    /// Echoed in status events, see the Windows camera module.
+    #[serde(default)]
+    pub session: u64,
 }
 
 #[derive(Deserialize, Serialize, Clone, Copy, Default)]
@@ -48,6 +51,7 @@ struct Status {
     fps: f32,
     native: bool,
     source: &'static str,
+    session: u64,
 }
 
 /// `/dev/videoN` of the loopback device created for Android Tools.
@@ -110,8 +114,9 @@ fn orientation(live: &Live) -> Option<String> {
 fn run(app: AppHandle, s: Settings, stop: Arc<AtomicBool>, child_slot: Arc<Mutex<Option<Child>>>) {
     let native = s.mode == "native" || (s.mode == "auto" && s.sdk >= 31);
     let source = if native { "native" } else { "compat" };
+    let session = s.session;
     let status = |state: &'static str, text: &str| {
-        let _ = app.emit("camera-status", Status { state, text: text.into(), fps: 0.0, native, source });
+        let _ = app.emit("camera-status", Status { state, text: text.into(), fps: 0.0, native, source, session });
     };
     let error = |text: String| {
         let _ = app.emit("camera-error", text);
@@ -261,8 +266,9 @@ fn iphone_filter(live: &Live, (w, h): (u32, u32)) -> String {
 fn run_iphone(app: AppHandle, s: Settings, stop: Arc<AtomicBool>, child_slot: Arc<Mutex<Option<Child>>>) {
     use std::io::Write;
     use std::sync::atomic::AtomicU32;
+    let session = s.session;
     let emit = |state: &'static str, text: &str, fps: f32| {
-        let _ = app.emit("camera-status", Status { state, text: text.into(), fps, native: false, source: "iphone" });
+        let _ = app.emit("camera-status", Status { state, text: text.into(), fps, native: false, source: "iphone", session });
     };
     let error = |text: String| {
         let _ = app.emit("camera-error", text);
@@ -270,7 +276,7 @@ fn run_iphone(app: AppHandle, s: Settings, stop: Arc<AtomicBool>, child_slot: Ar
 
     let result: Res<()> = (|| {
         emit("connecting", "Ждём iPhone…", 0.0);
-        if !crate::iphone::connected() {
+        if !crate::iphone::wait_connected(&stop, Duration::from_secs(10)) {
             return Err("iPhone не подключён: откройте ссылку или QR-код на вкладке «Девайсы»".into());
         }
         let device = find_device().ok_or("Камера не установлена")?;
@@ -324,11 +330,15 @@ fn run_iphone(app: AppHandle, s: Settings, stop: Arc<AtomicBool>, child_slot: Ar
 
         let mut tick = Instant::now();
         let mut last = 0;
+        // Short drops (page reload, network switch) are waited out: the page resumes by itself.
+        let mut lost: Option<Instant> = None;
         loop {
             if stop.load(Ordering::SeqCst) {
                 return Ok(());
             }
-            if !crate::iphone::connected() {
+            if crate::iphone::connected() {
+                lost = None;
+            } else if lost.get_or_insert_with(Instant::now).elapsed() > Duration::from_secs(20) {
                 return Err("iPhone отключился".into());
             }
             if matches!(child_slot.lock().unwrap().as_mut().map(|c| c.try_wait()), Some(Ok(Some(_)))) {

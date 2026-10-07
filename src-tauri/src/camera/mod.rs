@@ -42,6 +42,10 @@ pub struct Settings {
     /// "android" (default) or "iphone".
     #[serde(default)]
     pub source: String,
+    /// Chosen by the UI and echoed in status events: a restart (front ↔ back camera) stops the
+    /// previous stream, whose late "stopped" must not switch the new one off.
+    #[serde(default)]
+    pub session: u64,
 }
 
 #[derive(Deserialize, Serialize, Clone, Copy, Default)]
@@ -60,6 +64,7 @@ struct Status {
     native: bool,
     /// native | compat | iphone
     source: &'static str,
+    session: u64,
 }
 
 pub struct Camera {
@@ -131,7 +136,7 @@ struct Ctx {
 impl Ctx {
     fn status(&self, state: &'static str, text: impl Into<String>, fps: f32) {
         let source = if self.s.source == "iphone" { "iphone" } else if self.native { "native" } else { "compat" };
-        let _ = self.app.emit("camera-status", Status { state, text: text.into(), fps, native: self.native, source });
+        let _ = self.app.emit("camera-status", Status { state, text: text.into(), fps, native: self.native, source, session: self.s.session });
     }
 
     fn error(&self, text: impl Into<String>) {
@@ -164,13 +169,15 @@ impl Ctx {
     /// iPhone: frames arrive from the Safari page through crate::iphone.
     fn run_iphone(self) {
         self.status("connecting", "Ждём iPhone…", 0.0);
-        if !crate::iphone::connected() {
-            self.error("iPhone не подключён: откройте ссылку или QR-код на вкладке «Девайсы»");
+        if !crate::iphone::wait_connected(&self.stop, Duration::from_secs(10)) {
+            if !self.stopped() {
+                self.error("iPhone не подключён: откройте ссылку или QR-код на вкладке «Девайсы»");
+            }
             self.status("stopped", "", 0.0);
             return;
         }
         let (w, h) = self.size();
-        let mut output = Output::open(self.app.clone(), self.stop.clone(), (w, h), self.s.fps, "iphone");
+        let mut output = Output::open(self.app.clone(), self.stop.clone(), (w, h), self.s.fps, "iphone", self.s.session);
         let live = self.live.clone();
         let mut jpeg = Jpeg::default();
         crate::iphone::set_sink(Some(Box::new(move |data: &[u8]| {
@@ -184,8 +191,13 @@ impl Ctx {
             "quality": if self.s.bitrate >= 10 { 0.85 } else if self.s.bitrate >= 5 { 0.75 } else { 0.6 },
             "torch": self.s.torch,
         }));
+        // Safari drops the connection for a moment when the page reloads or the phone switches
+        // networks; the page resumes streaming by itself when it is back.
+        let mut lost: Option<Instant> = None;
         while !self.stopped() {
-            if !crate::iphone::connected() {
+            if crate::iphone::connected() {
+                lost = None;
+            } else if lost.get_or_insert_with(Instant::now).elapsed() > Duration::from_secs(20) {
                 self.error("iPhone отключился");
                 break;
             }
@@ -323,7 +335,7 @@ impl Ctx {
 
     fn receive(&self, mut stream: TcpStream) -> Res<()> {
         let source = if self.native { "native" } else { "compat" };
-        let mut output = Output::open(self.app.clone(), self.stop.clone(), self.size(), self.s.fps, source);
+        let mut output = Output::open(self.app.clone(), self.stop.clone(), self.size(), self.s.fps, source, self.s.session);
         let mut decoder = decoder::Decoder::new().map_err(|e| format!("Декодер H.264: {e}"))?;
         let mut codec = [0u8; 4];
         stream.read_exact(&mut codec).map_err(|e| e.to_string())?;
@@ -383,7 +395,14 @@ struct Output {
 }
 
 impl Output {
-    fn open(app: AppHandle, stop: Arc<AtomicBool>, (out_w, out_h): (u32, u32), fps: u32, source: &'static str) -> Self {
+    fn open(
+        app: AppHandle,
+        stop: Arc<AtomicBool>,
+        (out_w, out_h): (u32, u32),
+        fps: u32,
+        source: &'static str,
+        session: u64,
+    ) -> Self {
         // Windows 10: DirectShow camera. Windows 11: Media Foundation camera via shared memory.
         let dshow_mode = install::use_dshow();
         // The DirectShow camera is fed from its own thread at a fixed rate with the latest
@@ -435,13 +454,15 @@ impl Output {
                         last = now;
                         tick = Instant::now();
                         let _ = app.emit("camera-status", Status {
-                            state: "running", text: "Трансляция".into(), fps, native: source == "native", source,
+                            state: "running", text: "Трансляция".into(), fps, native: source == "native", source, session,
                         });
                     }
                 }
             });
         }
-        let _ = app.emit("camera-status", Status { state: "running", text: "Трансляция".into(), fps: 0.0, native: source == "native", source });
+        let _ = app.emit("camera-status", Status {
+            state: "running", text: "Трансляция".into(), fps: 0.0, native: source == "native", source, session,
+        });
         Output { app, canvas: Canvas::new(out_w, out_h), shared, latest_bgr, decoded, last_preview: Instant::now() - Duration::from_secs(1) }
     }
 

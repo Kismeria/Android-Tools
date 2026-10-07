@@ -62,6 +62,12 @@
               <button class="btn" id="wifiPair" style="width:190px"><i class="ic">&#xE8AB;</i>Сопряжение</button>
             </div>
             <div class="faint">Android 11+: Для разработчиков → Отладка по Wi‑Fi → Сопряжение по коду</div>
+            <div class="divider"></div>
+            <label class="switch" title="Телефон, подключённый кабелем, сам переходит на Wi‑Fi; знакомые телефоны подключаются снова, когда появляются в сети">
+              <i class="ic">&#xE895;</i>
+              <span class="text">Автоматически<span class="faint block">Кабель → Wi‑Fi без нажатий, переподключение после обрыва и перезапуска ПК</span></span>
+              <input type="checkbox" id="wifiAuto"><i class="knob"></i>
+            </label>
           </div>
           <div class="card iph" id="iphCard">
             <div class="row" style="margin-bottom:12px">
@@ -85,7 +91,12 @@
                   <select id="iphUrl" class="grow mono"></select>
                   <button class="btn small icon" id="iphCopy" title="Копировать ссылку"><i class="ic">&#xE8C8;</i></button>
                 </div>
-                <div class="faint">Если Windows спросит доступ к сети — разрешите для частных сетей.</div>
+                <div class="row" id="iphFirewall" style="display:none">
+                  <i class="ic warn">&#xE7EF;</i>
+                  <span class="hint grow">Брандмауэр Windows не пускает iPhone к ПК</span>
+                  <button class="btn small primary" id="iphFirewallFix">Разрешить</button>
+                </div>
+                <div class="faint">Страница не открывается — проверьте, что iPhone не в гостевой сети и VPN выключен.</div>
               </div>
             </div>
           </div>
