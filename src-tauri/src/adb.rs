@@ -102,6 +102,45 @@ pub struct Device {
 }
 
 pub fn devices() -> Res<Vec<Device>> {
+    let list = list_devices()?;
+    if list.is_empty() && restart_due(true) {
+        // On Windows the adb server sometimes stops seeing USB phones (it lists nothing while
+        // the phone's ADB interface is present) until it is restarted. With nothing listed there
+        // is no connection to lose, so restart it now and then.
+        let _ = run_lenient(None, &["kill-server"], 10);
+        let _ = run_lenient(None, &["start-server"], 20);
+        return list_devices();
+    }
+    if !list.is_empty() {
+        restart_due(false);
+    }
+    Ok(list)
+}
+
+/// True at most once per 20 s of an empty device list; `empty: false` resets the clock.
+fn restart_due(empty: bool) -> bool {
+    use std::sync::Mutex;
+    use std::time::Instant;
+    static EMPTY_SINCE: Mutex<Option<Instant>> = Mutex::new(None);
+    let mut since = EMPTY_SINCE.lock().unwrap();
+    if !empty {
+        *since = None;
+        return false;
+    }
+    match *since {
+        None => {
+            *since = Some(Instant::now());
+            false
+        }
+        Some(t) if t.elapsed() >= Duration::from_secs(20) => {
+            *since = Some(Instant::now());
+            true
+        }
+        _ => false,
+    }
+}
+
+fn list_devices() -> Res<Vec<Device>> {
     let out = run(None, &["devices", "-l"], 10)?;
     Ok(out
         .lines()

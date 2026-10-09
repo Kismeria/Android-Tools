@@ -818,6 +818,8 @@
 .tp[data-style="material"] .tp-side i.on { width: 14px; border-radius: 99px; background: var(--accent-dim); }
 
 /* ════════════════ Cyberpunk (2077) ════════════════ */
+/* Modeled on the game's settings menu: near-black with a red cast, coral-red labels and thin
+   red rules, the hovered/selected row outlined and lit in cyan, yellow only for key actions. */
 
 @font-face {
   font-family: "Tektur";
@@ -826,125 +828,121 @@
   font-stretch: 75% 100%;
 }
 [data-style="cyberpunk"] {
-  --bg: #0a0b10; --surface: #0f1119; --raised: #141724; --hover: #1a1e2e; --border: #1d3a44; --border-hi: #2a5866;
-  --text: #dff6ff; --dim: #7fbfcc; --faint: #3d6873; --accent: #fcee0a; --accent-hi: #fff35c; --accent-dim: #3a3700;
-  --on-accent: #0a0b10; --danger: #ff003c; --warn: #ff9f1c; --caption: #0a0b10; --caption-text: #fcee0a; color-scheme: dark;
-  --cyan: #00f0ff; --red: #ff003c;
-  --cut: polygon(0 0, calc(100% - 14px) 0, 100% 14px, 100% 100%, 14px 100%, 0 calc(100% - 14px));
-  --cut-sm: polygon(0 0, 100% 0, 100% calc(100% - 9px), calc(100% - 9px) 100%, 0 100%);
+  --bg: #0b0606; --surface: #120909; --raised: #1a0d0d; --hover: #221111; --border: #3a1716; --border-hi: #5c2420;
+  --text: #ff6f61; --dim: #b65a50; --faint: #5e2c27; --accent: #5ef6ff; --accent-hi: #a3fbff; --accent-dim: #0f3a3d;
+  --on-accent: #0b0606; --danger: #ff2a3c; --warn: #f3e600; --caption: #0b0606; --caption-text: #ff6f61; color-scheme: dark;
+  --cyan: #5ef6ff; --red: #ff6f61; --yellow: #f3e600; --rule: rgba(255,111,97,.22);
+  --cut: polygon(0 0, 100% 0, 100% calc(100% - 10px), calc(100% - 10px) 100%, 0 100%);
+  --cut-sm: polygon(0 0, 100% 0, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%);
 }
 :root[data-style="cyberpunk"] { --font: "Tektur", "Bahnschrift", "Segoe UI", sans-serif; --mono: "Tektur", "Cascadia Mono", monospace; --radius: 0; --radius-sm: 0; }
 :root[data-style="cyberpunk"] body {
-  font-stretch: 80%; font-weight: 500; letter-spacing: .3px;
-  background:
-    linear-gradient(rgba(0,240,255,.035) 1px, transparent 1px) 0 0 / 44px 44px,
-    linear-gradient(90deg, rgba(0,240,255,.035) 1px, transparent 1px) 0 0 / 44px 44px,
-    radial-gradient(ellipse at 80% -10%, rgba(255,0,60,.16), transparent 55%),
-    radial-gradient(ellipse at 0% 110%, rgba(0,240,255,.10), transparent 50%),
-    #0a0b10;
+  font-stretch: 88%; font-weight: 500; letter-spacing: .4px;
+  background: radial-gradient(ellipse at 50% 0%, #1a0a0a, transparent 70%), #0b0606;
 }
-/* Scan lines over the interface but under toasts (50), dialogs (60) and menus (70). */
-:root[data-style="cyberpunk"] .app::after {
-  content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 45;
-  background: repeating-linear-gradient(0deg, rgba(0,0,0,.1) 0 1px, transparent 1px 3px);
-}
-:root[data-style="cyberpunk"] .sidebar { background: rgba(5,6,10,.85); border-right: 1px solid rgba(255,0,60,.45); }
-:root[data-style="cyberpunk"] .logo { color: var(--accent); filter: drop-shadow(0 0 6px rgba(252,238,10,.6)); }
-:root[data-style="cyberpunk"] .nav { border-radius: 0; color: var(--dim); text-transform: uppercase; }
-:root[data-style="cyberpunk"] .nav span { font-weight: 700; letter-spacing: 1px; font-size: 10px; }
-:root[data-style="cyberpunk"] .nav:hover { background: rgba(0,240,255,.08); color: var(--cyan); }
-:root[data-style="cyberpunk"] .nav.active { background: var(--accent); color: #0a0b10; clip-path: var(--cut-sm); }
-:root[data-style="cyberpunk"] .nav.active .ic { color: #0a0b10; }
-:root[data-style="cyberpunk"] header h1 {
-  font-size: 32px; font-weight: 800; font-stretch: 75%; text-transform: uppercase; letter-spacing: 4px; color: var(--accent);
-  text-shadow: 2px 0 var(--red), -2px 0 var(--cyan); animation: cp-glitch 6s steps(1) infinite;
-}
-@keyframes cp-glitch {
-  0%, 92%, 100% { transform: none; text-shadow: 2px 0 var(--red), -2px 0 var(--cyan); clip-path: none; }
-  93% { transform: translateX(3px); text-shadow: -3px 0 var(--red), 3px 0 var(--cyan); clip-path: inset(10% 0 55% 0); }
-  95% { transform: translateX(-3px); clip-path: inset(55% 0 5% 0); }
-  97% { transform: none; text-shadow: 4px 0 var(--red), -4px 0 var(--cyan); clip-path: none; }
-}
-:root[data-style="cyberpunk"] .card {
-  background: linear-gradient(180deg, rgba(20,23,36,.92), rgba(12,14,22,.92)); border: 1px solid var(--border-hi);
-  clip-path: var(--cut); position: relative;
-}
-:root[data-style="cyberpunk"] .card::before {
-  content: ""; position: absolute; left: 0; top: 0; width: 42px; height: 3px; background: var(--accent); pointer-events: none;
-}
-:root[data-style="cyberpunk"] .card::after {
-  content: ""; position: absolute; right: 0; top: 0; width: 20px; height: 20px; pointer-events: none;
-  background: linear-gradient(225deg, var(--red) 0 10px, transparent 10px);
-}
-:root[data-style="cyberpunk"] .section { color: var(--accent); font-weight: 800; letter-spacing: 2.5px; font-size: 12px; display: flex; align-items: center; gap: 8px; }
-:root[data-style="cyberpunk"] .section::before { content: ""; width: 4px; height: 12px; background: var(--red); flex: none; }
-:root[data-style="cyberpunk"] .big { text-transform: uppercase; letter-spacing: 1px; }
-:root[data-style="cyberpunk"] .btn, :root[data-style="cyberpunk"] .tile, :root[data-style="cyberpunk"] .lang-tiles button {
-  background: rgba(0,240,255,.06); border: 1px solid rgba(0,240,255,.55); color: var(--cyan); clip-path: var(--cut-sm);
-  text-transform: uppercase; letter-spacing: 1.2px; font-weight: 700;
-}
-:root[data-style="cyberpunk"] .btn:hover, :root[data-style="cyberpunk"] .tile:hover {
-  background: rgba(0,240,255,.16); border-color: var(--cyan); text-shadow: 1px 0 var(--red), -1px 0 var(--cyan); animation: cp-jitter .25s steps(2) 1;
-}
-@keyframes cp-jitter { 50% { transform: translate(1px, -1px); } }
-:root[data-style="cyberpunk"] .tile .ic { color: var(--accent); }
-:root[data-style="cyberpunk"] .btn.primary { background: var(--accent); color: #0a0b10; border-color: var(--accent); }
-:root[data-style="cyberpunk"] .btn.primary:hover { background: var(--accent-hi); color: #0a0b10; box-shadow: 0 0 18px rgba(252,238,10,.45); }
-:root[data-style="cyberpunk"] .btn.stop { background: var(--red); color: #fff; border-color: var(--red); }
-:root[data-style="cyberpunk"] .btn.danger { color: var(--red); border-color: rgba(255,0,60,.6); background: rgba(255,0,60,.06); }
-:root[data-style="cyberpunk"] .btn.ghost { background: transparent; border-color: transparent; color: var(--dim); }
-:root[data-style="cyberpunk"] .btn.ghost:hover { color: var(--cyan); border-color: rgba(0,240,255,.4); }
-:root[data-style="cyberpunk"] .seg { background: rgba(5,6,10,.7); border: 1px solid var(--border-hi); padding: 2px; }
-:root[data-style="cyberpunk"] .seg button { text-transform: uppercase; letter-spacing: 1px; font-weight: 700; color: var(--dim); }
-:root[data-style="cyberpunk"] .seg button.on { background: var(--accent); color: #0a0b10; border-color: transparent; clip-path: var(--cut-sm); }
-:root[data-style="cyberpunk"] input[type=text], :root[data-style="cyberpunk"] input[type=search], :root[data-style="cyberpunk"] select {
-  background: #07080c; border: 1px solid var(--border-hi); color: var(--cyan); caret-color: var(--accent);
-}
-:root[data-style="cyberpunk"] input:focus, :root[data-style="cyberpunk"] select:focus { border-color: var(--cyan); box-shadow: 0 0 10px rgba(0,240,255,.35); background: #07080c; }
-:root[data-style="cyberpunk"] .switch i.knob { border-radius: 0; background: #07080c; border: 1px solid var(--border-hi); clip-path: var(--cut-sm); }
-:root[data-style="cyberpunk"] .switch i.knob::after { border-radius: 0; background: var(--dim); top: 2px; }
-:root[data-style="cyberpunk"] .switch input:checked + i.knob { background: var(--accent); border-color: var(--accent); }
-:root[data-style="cyberpunk"] .switch input:checked + i.knob::after { background: #0a0b10; }
-:root[data-style="cyberpunk"] input[type=range]::-webkit-slider-runnable-track { height: 3px; border-radius: 0; background: linear-gradient(to right, var(--accent) var(--p), var(--border-hi) var(--p)); }
-:root[data-style="cyberpunk"] input[type=range]::-webkit-slider-thumb { width: 12px; height: 12px; margin-top: -4.5px; border-radius: 0; background: var(--cyan); transform: rotate(45deg); box-shadow: 0 0 8px var(--cyan); }
-:root[data-style="cyberpunk"] .list { background: rgba(7,8,12,.85); border: 1px solid var(--border-hi); }
-:root[data-style="cyberpunk"] .item { border-radius: 0; }
-:root[data-style="cyberpunk"] .item:hover { background: rgba(0,240,255,.07); }
-:root[data-style="cyberpunk"] .item.sel { background: var(--accent); color: #0a0b10; }
-:root[data-style="cyberpunk"] .item.sel .ic, :root[data-style="cyberpunk"] .item.sel .meta { color: #0a0b10; }
-:root[data-style="cyberpunk"] .device.selected { border-color: var(--accent); box-shadow: inset 3px 0 var(--accent); }
-:root[data-style="cyberpunk"] .step > b, :root[data-style="cyberpunk"] .app-badge, :root[data-style="cyberpunk"] .device .badge, :root[data-style="cyberpunk"] .mic-orb {
-  border-radius: 0; background: rgba(252,238,10,.1); color: var(--accent); border: 1px solid rgba(252,238,10,.5); clip-path: var(--cut-sm);
-}
-:root[data-style="cyberpunk"] .mic-orb.on { background: var(--accent); color: #0a0b10; }
-:root[data-style="cyberpunk"] .vu, :root[data-style="cyberpunk"] .bar { border-radius: 0; }
-:root[data-style="cyberpunk"] .vu-fill { background: linear-gradient(90deg, var(--cyan) 0 60%, var(--accent) 80%, var(--red) 100%); }
-:root[data-style="cyberpunk"] .bar i { background: var(--accent); border-radius: 0; }
-:root[data-style="cyberpunk"] .status-dot.on { background: var(--cyan); box-shadow: 0 0 8px var(--cyan); }
-:root[data-style="cyberpunk"] .preview, :root[data-style="cyberpunk"] .console, :root[data-style="cyberpunk"] .wave, :root[data-style="cyberpunk"] .thumb {
-  background: #05060a; border: 1px solid var(--border-hi); border-radius: 0;
-}
-:root[data-style="cyberpunk"] .console { color: var(--cyan); }
-:root[data-style="cyberpunk"] .menu, :root[data-style="cyberpunk"] .modal, :root[data-style="cyberpunk"] .toast {
-  background: #0c0e16; border: 1px solid var(--accent); border-radius: 0; clip-path: var(--cut); box-shadow: none;
-}
-:root[data-style="cyberpunk"] .toast { border-color: var(--border-hi); border-left: 4px solid var(--accent); }
-:root[data-style="cyberpunk"] .toast.err { border-left-color: var(--red); }
-:root[data-style="cyberpunk"] .modal h3 { color: var(--accent); text-transform: uppercase; letter-spacing: 2px; }
-:root[data-style="cyberpunk"] .menu button { border-radius: 0; text-transform: uppercase; letter-spacing: .8px; }
-:root[data-style="cyberpunk"] .menu button:hover { background: var(--accent); color: #0a0b10; }
-:root[data-style="cyberpunk"] .busy.on::after { background: linear-gradient(90deg, var(--red), var(--accent), var(--cyan)); }
-:root[data-style="cyberpunk"] .page::-webkit-scrollbar-thumb, :root[data-style="cyberpunk"] .scroll::-webkit-scrollbar-thumb { background: var(--border-hi); border-radius: 0; }
-:root[data-style="cyberpunk"] .statusbar { background: rgba(5,6,10,.9); border-top: 1px solid rgba(255,0,60,.45); color: var(--dim); text-transform: uppercase; letter-spacing: 1px; font-size: 10.5px; }
-:root[data-style="cyberpunk"] .sb-chip { border-radius: 0; }
-:root[data-style="cyberpunk"] .sb-chip.on { background: var(--accent); color: #0a0b10; border-color: var(--accent); }
-:root[data-style="cyberpunk"] .theme-card, :root[data-style="cyberpunk"] .pal-card { border-radius: 0; clip-path: var(--cut-sm); }
-:root[data-style="cyberpunk"] .theme-card.on, :root[data-style="cyberpunk"] .pal-card.on { border-color: var(--accent); }
 
-.tp[data-style="cyberpunk"] { background: linear-gradient(rgba(0,240,255,.06) 1px, transparent 1px) 0 0 / 8px 8px, #0a0b10; border-color: #ff003c66; }
-.tp[data-style="cyberpunk"] .tp-side { background: #05060a; border-right: 1px solid #ff003c88; }
-.tp[data-style="cyberpunk"] .tp-side i.on { background: #fcee0a; border-radius: 0; }
-.tp[data-style="cyberpunk"] .tp-title { background: #fcee0a; border-radius: 0; box-shadow: 1.5px 0 #ff003c, -1.5px 0 #00f0ff; }
-.tp[data-style="cyberpunk"] .tp-card { border: 1px solid #2a5866; border-radius: 0; clip-path: polygon(0 0, calc(100% - 7px) 0, 100% 7px, 100% 100%, 7px 100%, 0 calc(100% - 7px)); }
-.tp[data-style="cyberpunk"] .tp-line { background: #00f0ff; opacity: .5; border-radius: 0; }
-.tp[data-style="cyberpunk"] .tp-btn { background: #fcee0a; border-radius: 0; clip-path: polygon(0 0, 100% 0, 100% calc(100% - 4px), calc(100% - 4px) 100%, 0 100%); }
+/* Sidebar: plain column, a thin red rule, the active tab marked like the game's top tabs. */
+:root[data-style="cyberpunk"] .sidebar { background: #090404; border-right: 1px solid var(--rule); }
+:root[data-style="cyberpunk"] .logo { color: var(--red); }
+:root[data-style="cyberpunk"] .nav { border-radius: 0; color: var(--dim); text-transform: uppercase; position: relative; }
+:root[data-style="cyberpunk"] .nav span { font-weight: 600; letter-spacing: 1.5px; font-size: 10px; }
+:root[data-style="cyberpunk"] .nav:hover { background: transparent; color: var(--text); }
+:root[data-style="cyberpunk"] .nav.active { background: rgba(255,111,97,.08); color: var(--cyan); }
+:root[data-style="cyberpunk"] .nav.active .ic { color: var(--cyan); }
+:root[data-style="cyberpunk"] .nav.active::before { content: ""; position: absolute; left: 0; top: 6px; bottom: 6px; width: 2px; background: var(--cyan); }
+
+:root[data-style="cyberpunk"] header h1 {
+  font-size: 30px; font-weight: 700; font-stretch: 80%; text-transform: uppercase; letter-spacing: 3px; color: var(--red);
+  padding-bottom: 6px; border-bottom: 1px solid var(--rule);
+}
+
+/* Panels: flat, hairline border, one clipped corner. */
+:root[data-style="cyberpunk"] .card { background: rgba(18,9,9,.9); border: 1px solid var(--border); clip-path: var(--cut); }
+:root[data-style="cyberpunk"] .section {
+  color: var(--red); font-weight: 700; letter-spacing: 2px; font-size: 11.5px;
+  display: flex; align-items: center; gap: 10px;
+}
+:root[data-style="cyberpunk"] .section::after { content: ""; flex: 1; height: 1px; background: var(--rule); }
+:root[data-style="cyberpunk"] .big { text-transform: uppercase; letter-spacing: 1px; }
+
+/* Buttons: outlined in red; hover lights them cyan like a selected menu row. */
+:root[data-style="cyberpunk"] .btn, :root[data-style="cyberpunk"] .tile, :root[data-style="cyberpunk"] .lang-tiles button {
+  background: transparent; border: 1px solid var(--border-hi); color: var(--text); clip-path: var(--cut-sm);
+  text-transform: uppercase; letter-spacing: 1.2px; font-weight: 600;
+}
+:root[data-style="cyberpunk"] .btn:hover, :root[data-style="cyberpunk"] .tile:hover, :root[data-style="cyberpunk"] .lang-tiles button:hover {
+  background: rgba(94,246,255,.07); border-color: var(--cyan); color: var(--cyan);
+}
+:root[data-style="cyberpunk"] .tile .ic { color: var(--red); }
+:root[data-style="cyberpunk"] .tile:hover .ic { color: var(--cyan); }
+:root[data-style="cyberpunk"] .btn.primary { background: var(--yellow); color: #0b0606; border-color: var(--yellow); }
+:root[data-style="cyberpunk"] .btn.primary:hover { background: #fff35c; color: #0b0606; border-color: #fff35c; }
+:root[data-style="cyberpunk"] .btn.stop { background: var(--danger); color: #0b0606; border-color: var(--danger); }
+:root[data-style="cyberpunk"] .btn.danger { color: var(--danger); border-color: rgba(255,42,60,.5); }
+:root[data-style="cyberpunk"] .btn.ghost { border-color: transparent; color: var(--dim); }
+:root[data-style="cyberpunk"] .btn.ghost:hover { color: var(--cyan); border-color: transparent; background: transparent; }
+
+/* Option switchers read like the game's "◂ value ▸" selectors. */
+:root[data-style="cyberpunk"] .seg { background: transparent; border: 1px solid var(--border); padding: 0; }
+:root[data-style="cyberpunk"] .seg button { text-transform: uppercase; letter-spacing: 1px; font-weight: 600; color: var(--dim); }
+:root[data-style="cyberpunk"] .seg button:hover { color: var(--text); }
+:root[data-style="cyberpunk"] .seg button.on { background: rgba(94,246,255,.08); color: var(--cyan); box-shadow: inset 0 -2px var(--cyan); border-color: transparent; }
+
+:root[data-style="cyberpunk"] input[type=text], :root[data-style="cyberpunk"] input[type=search], :root[data-style="cyberpunk"] select {
+  background: #0d0707; border: 1px solid var(--border); color: var(--text); caret-color: var(--cyan);
+}
+:root[data-style="cyberpunk"] input:focus, :root[data-style="cyberpunk"] select:focus { border-color: var(--cyan); box-shadow: none; background: #0d0707; }
+:root[data-style="cyberpunk"] .switch i.knob { border-radius: 0; background: #0d0707; border: 1px solid var(--border-hi); }
+:root[data-style="cyberpunk"] .switch i.knob::after { border-radius: 0; background: var(--dim); top: 2px; }
+:root[data-style="cyberpunk"] .switch input:checked + i.knob { background: rgba(94,246,255,.12); border-color: var(--cyan); }
+:root[data-style="cyberpunk"] .switch input:checked + i.knob::after { background: var(--cyan); }
+/* Sliders: the game's thin red bar with a square handle. */
+:root[data-style="cyberpunk"] input[type=range]::-webkit-slider-runnable-track { height: 2px; border-radius: 0; background: linear-gradient(to right, var(--red) var(--p), var(--border) var(--p)); }
+:root[data-style="cyberpunk"] input[type=range]::-webkit-slider-thumb { width: 8px; height: 14px; margin-top: -6px; border-radius: 0; background: var(--red); box-shadow: none; }
+:root[data-style="cyberpunk"] input[type=range]:hover::-webkit-slider-thumb { background: var(--cyan); }
+
+/* Lists: rows separated by rules; the selected row is outlined in cyan, as in the menu. */
+:root[data-style="cyberpunk"] .list { background: rgba(13,7,7,.9); border: 1px solid var(--border); }
+:root[data-style="cyberpunk"] .item { border-radius: 0; border-bottom: 1px solid rgba(255,111,97,.08); }
+:root[data-style="cyberpunk"] .item:hover { background: rgba(255,111,97,.06); }
+:root[data-style="cyberpunk"] .item.sel { background: rgba(94,246,255,.08); color: var(--cyan); box-shadow: inset 0 0 0 1px var(--cyan); }
+:root[data-style="cyberpunk"] .item.sel .ic, :root[data-style="cyberpunk"] .item.sel .meta { color: var(--cyan); }
+:root[data-style="cyberpunk"] .device.selected { border-color: var(--cyan); box-shadow: inset 2px 0 var(--cyan); }
+:root[data-style="cyberpunk"] .step > b, :root[data-style="cyberpunk"] .app-badge, :root[data-style="cyberpunk"] .device .badge, :root[data-style="cyberpunk"] .mic-orb {
+  border-radius: 0; background: transparent; color: var(--red); border: 1px solid var(--border-hi);
+}
+:root[data-style="cyberpunk"] .mic-orb.on { background: rgba(94,246,255,.1); color: var(--cyan); border-color: var(--cyan); }
+:root[data-style="cyberpunk"] .vu, :root[data-style="cyberpunk"] .bar { border-radius: 0; }
+:root[data-style="cyberpunk"] .vu-fill { background: var(--red); }
+:root[data-style="cyberpunk"] .bar i { background: var(--red); border-radius: 0; }
+:root[data-style="cyberpunk"] .status-dot.on { background: var(--cyan); box-shadow: none; }
+:root[data-style="cyberpunk"] .preview, :root[data-style="cyberpunk"] .console, :root[data-style="cyberpunk"] .wave, :root[data-style="cyberpunk"] .thumb {
+  background: #080404; border: 1px solid var(--border); border-radius: 0;
+}
+:root[data-style="cyberpunk"] .console { color: var(--dim); }
+
+:root[data-style="cyberpunk"] .menu, :root[data-style="cyberpunk"] .modal, :root[data-style="cyberpunk"] .toast {
+  background: #0e0707; border: 1px solid var(--border-hi); border-radius: 0; clip-path: var(--cut); box-shadow: none;
+}
+:root[data-style="cyberpunk"] .modal h3 { color: var(--red); text-transform: uppercase; letter-spacing: 2px; padding-bottom: 8px; border-bottom: 1px solid var(--rule); }
+:root[data-style="cyberpunk"] .toast { border-left: 2px solid var(--cyan); }
+:root[data-style="cyberpunk"] .toast.err { border-left-color: var(--danger); }
+:root[data-style="cyberpunk"] .menu button { border-radius: 0; text-transform: uppercase; letter-spacing: .8px; }
+:root[data-style="cyberpunk"] .menu button:hover { background: rgba(94,246,255,.08); color: var(--cyan); }
+:root[data-style="cyberpunk"] .busy.on::after { background: var(--red); }
+:root[data-style="cyberpunk"] .page::-webkit-scrollbar-thumb, :root[data-style="cyberpunk"] .scroll::-webkit-scrollbar-thumb { background: var(--border-hi); border-radius: 0; }
+/* Status bar: the game's bottom key-hint strip. */
+:root[data-style="cyberpunk"] .statusbar { background: #090404; border-top: 1px solid var(--rule); color: var(--dim); text-transform: uppercase; letter-spacing: 1px; font-size: 10.5px; }
+:root[data-style="cyberpunk"] .sb-chip { border-radius: 0; }
+:root[data-style="cyberpunk"] .sb-chip.on { background: transparent; color: var(--cyan); border-color: var(--cyan); }
+:root[data-style="cyberpunk"] .theme-card, :root[data-style="cyberpunk"] .pal-card { border-radius: 0; }
+:root[data-style="cyberpunk"] .theme-card.on, :root[data-style="cyberpunk"] .pal-card.on { border-color: var(--cyan); }
+
+.tp[data-style="cyberpunk"] { background: #0b0606; border-color: #3a1716; }
+.tp[data-style="cyberpunk"] .tp-side { background: #090404; border-right: 1px solid #ff6f6138; }
+.tp[data-style="cyberpunk"] .tp-side i { background: #b65a50; }
+.tp[data-style="cyberpunk"] .tp-side i.on { background: #5ef6ff; border-radius: 0; }
+.tp[data-style="cyberpunk"] .tp-title { background: #ff6f61; border-radius: 0; }
+.tp[data-style="cyberpunk"] .tp-card { background: #120909; border: 1px solid #3a1716; border-radius: 0; }
+.tp[data-style="cyberpunk"] .tp-line { background: #ff6f61; opacity: .45; border-radius: 0; }
+.tp[data-style="cyberpunk"] .tp-btn { background: transparent; border: 1px solid #5ef6ff; border-radius: 0; }
